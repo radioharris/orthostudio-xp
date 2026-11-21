@@ -279,7 +279,9 @@ def test_a_region_added_on_another_disk_writes_nothing_into_the_first(
 
 def test_a_region_changed_under_the_pack_sets_it_up_again(tmp_path: Path) -> None:
     """The pack takes the files its DSFs name from the region while Live streams: a region
-    installed again or updated must not leave DSFs of before beside .ter files of now."""
+    installed again or updated must not leave DSFs of before beside .ter files of now. A start
+    with X-Plane running on it is refused before (test_no_start_on_a_region_updated_while_xplane_
+    runs)."""
     import os
     import time
 
@@ -292,9 +294,6 @@ def test_a_region_changed_under_the_pack_sets_it_up_again(tmp_path: Path) -> Non
     time.sleep(0.01)
     (eur / "terrain" / "extra.ter").write_text("A\n800\nTERRAIN\n")  # an update
     os.utime(eur / "terrain")
-    setup_region(eur, pack, log=lines.append, xplane_running=lambda: True)
-    assert any("next start" in line for line in lines)  # not under a running X-Plane
-    lines.clear()
     setup_region(eur, pack, log=lines.append)
     assert any("changed since the pack was set up" in line for line in lines)
     assert any("Earth nav data:" in line for line in lines)  # its DSFs placed again
@@ -383,7 +382,10 @@ def test_a_new_decal_makes_the_pack_s_terrain_files_again(tmp_path: Path) -> Non
     assert (terrain / "a.ter").exists() and not (pack / DECAL_RECORD).exists()
     set_decal(pack, "grass_and_stony_dirt_1.dcl", log=said.append)
     assert not (terrain / "a.ter").exists() and terrain.is_dir()
-    assert json.loads((pack / DECAL_RECORD).read_text()) == {"decal": "grass_and_stony_dirt_1.dcl"}
+    assert json.loads((pack / DECAL_RECORD).read_text()) == {
+        "decal": "grass_and_stony_dirt_1.dcl",
+        "on_water": True,
+    }
     (terrain / "b.ter").write_text("made since\n")
     set_decal(pack, "grass_and_stony_dirt_1.dcl", log=said.append)
     assert (terrain / "b.ter").exists()
@@ -391,7 +393,32 @@ def test_a_new_decal_makes_the_pack_s_terrain_files_again(tmp_path: Path) -> Non
     assert (terrain / "b.ter").exists()
     set_decal(pack, "", log=said.append)
     assert not (terrain / "b.ter").exists()
-    assert json.loads((pack / DECAL_RECORD).read_text()) == {"decal": ""}
+    assert json.loads((pack / DECAL_RECORD).read_text()) == {"decal": "", "on_water": True}
+
+
+def test_a_pack_made_before_the_water_took_the_decal_makes_its_terrain_files_again(
+    tmp_path: Path,
+) -> None:
+    """A record of before the photo on the water took the decal makes the .ter files again once, at
+    a start with X-Plane not running; with no decal chosen there is nothing to add, nothing done."""
+    from orthostudio.live.region import DECAL_RECORD, set_decal
+
+    pack = tmp_path / "pack"
+    terrain = pack / "terrain"
+    terrain.mkdir(parents=True)
+    (terrain / "a.ter").write_text("made before\n")
+    (pack / DECAL_RECORD).parent.mkdir(parents=True)
+    (pack / DECAL_RECORD).write_text(json.dumps({"decal": "maquify_2_green_key.dcl"}))
+    set_decal(pack, "maquify_2_green_key.dcl", log=lambda _: None, xplane_running=lambda: True)
+    assert (terrain / "a.ter").exists()
+    set_decal(pack, "maquify_2_green_key.dcl", log=lambda _: None)
+    assert not (terrain / "a.ter").exists()
+    (terrain / "b.ter").write_text("made since\n")
+    set_decal(pack, "maquify_2_green_key.dcl", log=lambda _: None)
+    assert (terrain / "b.ter").exists()
+    (pack / DECAL_RECORD).write_text(json.dumps({"decal": ""}))
+    set_decal(pack, "", log=lambda _: None)
+    assert (terrain / "b.ter").exists()
 
 
 def test_live_s_decal_is_one_of_osxp_s() -> None:
@@ -421,3 +448,238 @@ def test_a_set_up_stopped_midway_does_not_refuse_the_next(tmp_path: Path) -> Non
     _place_dir(src.parent, dst, log=lambda _: None)
     assert not (pack / "Earth nav data.old").exists()
     assert (dst / "+40+000" / "+45+005.dsf").read_bytes() == b"XPLNEDSF"
+
+
+def test_a_region_updated_drops_the_textures_no_square_names_any_more(tmp_path: Path) -> None:
+    """An update of a region names some textures no more: set up again, the pack deletes those it
+    built, with their night textures and water photos, and forgets them in its record, so that
+    they no longer take Live's space; night textures of no texture go too, and every water photo,
+    made again with its square, is forgotten with it."""
+    import time
+
+    from orthostudio.live.names import night_name
+    from orthostudio.live.pack import load_built, save_built
+    from orthostudio.live.region import NIGHT_FOLDER
+    from orthostudio.live.waterphoto import water_name
+
+    eur = make_source(tmp_path / "eur", tile=(46, 2), textures=NAMES)  # the textures' square
+    pack = tmp_path / "pack"
+    setup_region(eur, pack, log=quiet)
+    textures, night = pack / "textures", pack / NIGHT_FOLDER
+    night.mkdir(exist_ok=True)
+    kept, gone, orphan = (f"{n}.dds" for n in (*NAMES, "23296_33184_BI16"))
+    for name in (kept, gone):
+        (textures / name).write_bytes(b"built")
+        (textures / water_name(name)).write_bytes(b"water")
+        (night / night_name(name)).write_bytes(b"lit")
+    (night / night_name(orphan)).write_bytes(b"lit, its texture long gone")
+    save_built(
+        pack,
+        {
+            "textures": {kept: 0, gone: 0},
+            "seen": {kept: 1, gone: 1},
+            "lit": {kept: 2, gone: 2, orphan: 2},
+            "water": {kept: 1, gone: 1},
+            "patchy": [gone],
+            "copied": [gone],
+        },
+    )
+    time.sleep(0.01)
+    for ter in (f"{NAMES[1]}.ter", f"{NAMES[1]}_water_overlay.ter"):  # the update: one gone
+        (eur / "terrain" / ter).unlink()
+    os.utime(eur / "terrain")
+    lines: list[str] = []
+    setup_region(eur, pack, log=lines.append, lists=tmp_path / "lists")
+    assert (textures / kept).exists() and (night / night_name(kept)).exists()
+    assert not (textures / gone).exists() and not (night / night_name(gone)).exists()
+    assert not (night / night_name(orphan)).exists()
+    assert not (textures / water_name(kept)).exists()  # made again with its square
+    meta = load_built(pack)
+    assert meta["textures"] == {kept: 0} and meta["seen"] == {kept: 1}
+    assert meta["lit"] == {kept: 2} and meta["water"] == {}
+    assert meta["patchy"] == [] and meta["copied"] == []
+    assert any("no square names any more" in line for line in lines)
+
+
+def test_a_region_away_for_a_while_loses_nothing(tmp_path: Path) -> None:
+    """A region only away (another tool's mesh on a disk unplugged): the pack is set up again
+    without it, and the textures built on its squares stay, recorded, for its return."""
+    from orthostudio.live.pack import load_built, save_built
+
+    eur = make_source(tmp_path / "eur", tile=(46, 2), textures=NAMES)
+    other = make_source(tmp_path / "other", tile=(45, 6), textures=("23968_33424_BI16",))
+    pack = tmp_path / "pack"
+    setup_region([eur, other], pack, log=quiet)
+    kept = pack / "textures" / "23968_33424_BI16.dds"
+    kept.write_bytes(b"built")
+    save_built(pack, {"textures": {kept.name: 0}, "seen": {kept.name: 1}})
+    setup_region([eur], pack, log=quiet)  # the other one's disk unplugged
+    assert kept.read_bytes() == b"built"
+    assert load_built(pack)["textures"] == {kept.name: 0}
+
+
+def test_the_shared_files_follow_their_region(tmp_path: Path) -> None:
+    """``water_transition.png`` and the other files every square may name: placed again where an
+    update of the region brought another, the first region's where two have one."""
+    import time
+
+    eur = make_source(tmp_path / "eur", tile=(45, 6), textures=NAMES)
+    na = make_source(tmp_path / "na", tile=(46, 2), textures=OTHERS)
+    (na / "textures" / "water_transition.png").write_bytes(b"\x89PNG of the second region")
+    pack = tmp_path / "pack"
+    setup_region([eur, na], pack, log=quiet)
+    shared = pack / "textures" / "water_transition.png"
+    assert shared.read_bytes() == b"\x89PNG fake"
+    time.sleep(0.01)
+    new = eur / "textures" / "water_transition.png.new"
+    new.write_bytes(b"\x89PNG of the update")
+    os.replace(new, eur / "textures" / "water_transition.png")  # unpacked, a file of its own
+    os.utime(eur / "terrain")
+    setup_region([eur, na], pack, log=quiet)
+    assert shared.read_bytes() == b"\x89PNG of the update"
+
+
+def test_no_start_on_a_region_updated_while_xplane_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A start first puts each update waiting whole in place, X-Plane not running; with X-Plane
+    running it leaves them waiting, and a region that changed since the pack was set up refuses
+    the start, as a new zoom does: X-Plane may be reading the region of before."""
+    import time
+
+    from orthostudio.live import osxpregions, winsearch
+    from orthostudio.live.filesystem import folder_link
+
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    xp = make_xplane(tmp_path)
+    src = make_source(tmp_path, tile=(45, 6), textures=NAMES)
+    pack = tmp_path / "pack"
+    options = session.Options(xplane=xp, pack=pack, source=src, no_plugin=True)
+    monkeypatch.setattr(winsearch, "keep_out", lambda folder, log=None: None)
+    settled: list[bool] = []
+    monkeypatch.setattr(
+        osxpregions, "settle", lambda root, log, swap, only=None: settled.append(swap)
+    )
+    monkeypatch.setattr(session, "xplane_running", lambda: False)
+    session.prepare(options, log=quiet)
+    assert settled == [True]  # X-Plane not running: the updates put in place first
+    link = xp / "Custom Scenery" / "z_osxp_live"
+    if not is_folder_link(link):
+        folder_link(pack, link)  # as Live links it here
+    monkeypatch.setattr(session, "is_installed", lambda *a: True)
+    monkeypatch.setattr(session, "xplane_running", lambda: True)
+    session.prepare(options, log=quiet)  # nothing changed: it may run
+    assert settled == [True, False]
+    time.sleep(0.01)
+    (src / "terrain" / "extra.ter").write_text("A\n800\nTERRAIN\n")  # an update
+    os.utime(src / "terrain")
+    with pytest.raises(session.RefusedError, match="changed since its last start"):
+        session.prepare(options, log=quiet)
+    monkeypatch.setattr(session, "xplane_running", lambda: False)
+    session.prepare(options, log=quiet)  # X-Plane quit: the pack set up again
+    monkeypatch.setattr(session, "xplane_running", lambda: True)
+    session.prepare(options, log=quiet)
+
+
+def test_a_region_updated_and_one_added_before_a_start(tmp_path: Path) -> None:
+    """Europe's update waited while X-Plane ran, North America installed meanwhile: the next start
+    puts the update in place and adds the new region. The pack is set up again whole, never the
+    new region merged alone beside Europe's DSFs of before."""
+    import shutil
+
+    regions = tmp_path / "regions"
+    regions.mkdir()
+    eur = make_source(tmp_path / "a", tile=(45, 6)).rename(regions / "z_osxp_eur")
+    pack = tmp_path / "pack"
+    setup_region([eur], pack, log=quiet)
+    dsf = "Earth nav data/+40+000/+45+006.dsf"
+    update = make_source(tmp_path / "b", tile=(45, 6))
+    (update / dsf).write_bytes(b"the update's DSF")
+    eur.rename(regions / ".z_osxp_eur.old")  # the update put in place
+    update.rename(eur)
+    shutil.rmtree(regions / ".z_osxp_eur.old")
+    os.utime(eur / "Earth nav data", (2_000_000_000, 2_000_000_000))
+    na = make_source(tmp_path / "c", tile=(46, 7)).rename(regions / "z_osxp_na")
+    lines: list[str] = []
+    setup_region([eur, na], pack, log=lines.append)
+    assert (pack / dsf).read_bytes() == b"the update's DSF"
+    assert (pack / "Earth nav data/+40+000/+46+007.dsf").exists()
+    assert any("changed since the pack was set up" in line for line in lines)
+
+
+def test_the_mesh_setting_streams_each_region_s_kept_old_mesh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """« Mesh: old », for every region at once: each region's kept old mesh in its place where it
+    has one, the new mesh elsewhere (North America keeps none); « new », the regions installed.
+    The kept mesh is Live's own mesh alike, with a list of textures of its own."""
+    from orthostudio.live import osxpregions
+    from orthostudio.live.aoregions import MARKER, regions_dir
+    from orthostudio.live.names import own_mesh
+    from orthostudio.live.settings import LiveSettings, save_settings
+
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    live = tmp_path / "live"
+    xp = tmp_path / "X-Plane 12"
+    folders = {}
+    for name in ("z_osxp_eur", "z_osxp_na", ".z_osxp_eur.kept"):
+        folder = regions_dir(live) / name
+        (folder / "terrain-lists").mkdir(parents=True)
+        (folder / MARKER).write_text("{}")
+        folders[name] = folder
+    eur, na, kept = folders["z_osxp_eur"], folders["z_osxp_na"], folders[".z_osxp_eur.kept"]
+    assert osxpregions.kept_mesh(live, "eur") == kept
+    assert default_sources(xp, live) == [eur, na]  # new, the default
+    save_settings(LiveSettings(mesh="old"))
+    assert default_sources(xp, live) == [kept, na]
+    assert own_mesh(kept) and region_list_file(tmp_path, kept) != region_list_file(tmp_path, eur)
+    (kept / MARKER).unlink()  # not whole: the new one
+    assert default_sources(xp, live) == [eur, na]
+    save_settings(LiveSettings(mesh="new"))
+    (kept / MARKER).write_text("{}")
+    assert default_sources(xp, live) == [eur, na]
+
+
+def test_no_start_on_a_mesh_changed_while_xplane_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pack made from one folder, the start reading the region from another (the Settings'
+    Mesh switched to a kept old mesh, or back, or the disk of a mesh not connected): refused with
+    X-Plane running, as a zoom changed is, saying the case in plain words, the pack never set up
+    again under it; with X-Plane closed, set up again. A region only added after the others is
+    merged in, as before; one put first sets the pack up again."""
+    from orthostudio.live import osxpregions, winsearch
+    from orthostudio.live.filesystem import folder_link
+    from orthostudio.live.region import pack_to_redo
+
+    monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    xp = make_xplane(tmp_path)
+    new = make_source(tmp_path / "new", tile=(45, 6), textures=NAMES)
+    old = make_source(tmp_path / "old", tile=(45, 6), textures=NAMES)
+    pack = tmp_path / "pack"
+    monkeypatch.setattr(winsearch, "keep_out", lambda folder, log=None: None)
+    monkeypatch.setattr(osxpregions, "settle", lambda root, log, swap, only=None: None)
+    monkeypatch.setattr(session, "xplane_running", lambda: False)
+    session.prepare(session.Options(xplane=xp, pack=pack, source=new, no_plugin=True), log=quiet)
+    assert not pack_to_redo([new], pack) and not pack_to_redo([new, old], pack)  # added: merged
+    assert pack_to_redo([old], pack) and pack_to_redo([old, new], pack)  # another comes first
+    link = xp / "Custom Scenery" / "z_osxp_live"
+    if not is_folder_link(link):
+        folder_link(pack, link)
+    monkeypatch.setattr(session, "is_installed", lambda *a: True)
+    monkeypatch.setattr(session, "xplane_running", lambda: True)
+    switched = session.Options(xplane=xp, pack=pack, source=old, no_plugin=True)
+    with pytest.raises(
+        session.RefusedError, match="streams onto changed since its last start"
+    ) as e:
+        session.prepare(switched, log=quiet)
+    said = str(e.value)
+    assert said.endswith("Quit X-Plane, or connect the disk holding a mesh, then start again")
+    assert "z_ao_test" not in said
+    assert sources_of_pack(pack) == [new]  # the pack as X-Plane found it
+    monkeypatch.setattr(session, "xplane_running", lambda: False)
+    session.prepare(switched, log=quiet)  # X-Plane closed: set up again from the old mesh
+    assert sources_of_pack(pack) == [old]

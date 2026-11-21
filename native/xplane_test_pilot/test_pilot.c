@@ -3,7 +3,7 @@
 
 /*
  * OrthoStudio XP Live's test pilot: a flight X-Plane flies the same way every time, with nobody at
- * the controls, for the replayable test flights (tools/live/flights, docs/specs/live/flights.md).
+ * the controls, for the replayable test flights (tools/live/flights).
  *
  * X-Plane stays up from one test to the next: opening and closing it took minutes each time (the
  * user: "Il faut que l'ouverture et chargement et fermeture soient rapides"). Every second the

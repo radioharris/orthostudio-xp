@@ -7,7 +7,8 @@ can include as it is the day Live comes into its window (``app.include_router``)
   the page asks every second, which also says it is open; ``POST /api/live/presence`` says only
   that (the welcome page);
 - ``GET  /api/live/log?after=N``: the log's lines after the N-th;
-- ``POST /api/live/start``: start streaming (409 while a stream is on);
+- ``POST /api/live/start``: start streaming (409 while a stream is on, or while a region is
+  being downloaded or installed);
 - ``POST /api/live/stop``: stop it; the pack comes out once X-Plane has quit;
 - ``POST /api/live/leave``: stop waiting for X-Plane: the pack stays installed;
 - ``POST /api/live/quit`` ``{"force": bool}``: the window goes, for the app's update or removal
@@ -20,9 +21,18 @@ can include as it is the day Live comes into its window (``app.include_router``)
   answer; ``POST /api/live/osxp``: OrthoStudio XP's window (its part, in the app's frame);
   ``GET /api/live/osxp-build``: whether OrthoStudio XP builds now; ``POST /api/live/front``: this
   window to the front, or the page opened again in the browser (``orthostudio.live.app_start``);
-- ``GET``/``PUT /api/live/settings``: the settings of ``live.toml`` (:mod:`.settings`);
+- ``GET``/``PUT /api/live/settings``: the settings of ``live.toml`` (:mod:`.settings`); soft
+  banks saved start the download of the installed regions' river masks
+  (:meth:`LiveControl.rivers_chosen`);
 - ``GET``/``PUT /api/live/xplane-folder`` ``{"path"}``: the X-Plane folder named in OrthoStudio
   XP's settings, the same for Build and Live, with the other X-Planes of the computer;
+- ``GET /api/live/regions``: OrthoStudio XP's regions (:meth:`LiveControl.regions`);
+  ``POST /api/live/regions/{id}/install`` ``{"keep_old": bool, "make_room": bool}``: install or
+  update one, the region of before kept or not, its kept old mesh deleted first for room or not;
+  ``GET /api/live/regions/{id}/room``: the room its update lacks beside it, asked at the click;
+  ``DELETE /api/live/regions/{id}``: delete its installed mesh, its kept old mesh taking its place
+  where it keeps one, else the region; ``DELETE /api/live/regions/{id}/kept``: delete its kept old
+  mesh alone (409 for each where it may not);
 - ``GET /api/live/providers``: the imagery sources, as OrthoStudio XP's ``GET /api/providers``;
 - ``POST /api/live/choose-folder`` ``{"prompt", "start"}``: the system's folder dialog, as
   OrthoStudio XP's ``POST /api/choose-folder``; ``POST /api/live/reveal`` ``{"path"}``: the
@@ -43,7 +53,7 @@ from pydantic import BaseModel, Field, ValidationError
 from orthostudio.errors import OsxpError
 from orthostudio.live import session
 from orthostudio.live.control import LiveControl, Refusal
-from orthostudio.live.pack import FolderError, check_folder
+from orthostudio.live.pack import folder_problem
 from orthostudio.live.scenery import move_live
 from orthostudio.live.settings import (
     LiveSettings,
@@ -88,6 +98,11 @@ class PrepareBody(BaseModel):
     departure: str = Field("", max_length=40)  # an airport's ICAO code, or lat,lon
 
 
+class InstallBody(BaseModel):
+    keep_old: bool = False  # the region of before kept at the swap (osxpregions.kept_dir)
+    make_room: bool = False  # its kept old mesh deleted first (osxpregions.Installer.make_room)
+
+
 def live_router(
     control: LiveControl,
     *,
@@ -118,7 +133,11 @@ def live_router(
 
     @router.post("/start", status_code=202)
     def start() -> dict[str, Any]:
-        if not control.start():
+        try:
+            started = control.start()
+        except session.RefusedError as e:  # a region being installed
+            raise HTTPException(409, str(e)) from e
+        if not started:
             raise HTTPException(409, "a stream is already on its way, or on its way out")
         return {"state": control.state}
 
@@ -254,9 +273,22 @@ def live_router(
         return control.regions()
 
     @router.post("/regions/{region_id}/install", status_code=202)
-    def install_region(region_id: str) -> dict[str, Any]:
+    def install_region(region_id: str, body: InstallBody | None = None) -> dict[str, Any]:
+        body = body or InstallBody()
         try:
-            control.install_region(region_id)
+            control.install_region(region_id, keep_old=body.keep_old, make_room=body.make_room)
+        except session.RefusedError as e:
+            raise HTTPException(409, str(e)) from e
+        return control.regions()
+
+    @router.get("/regions/{region_id}/room")
+    def update_room(region_id: str) -> dict[str, Any]:
+        return {"room": control.update_room(region_id)}
+
+    @router.delete("/regions/{region_id}/kept")
+    def remove_kept(region_id: str) -> dict[str, Any]:
+        try:
+            control.remove_kept(region_id)
         except session.RefusedError as e:
             raise HTTPException(409, str(e)) from e
         return control.regions()
@@ -385,14 +417,9 @@ def live_router(
             where = ".".join(str(p) for p in first.get("loc", ()))
             raise HTTPException(422, f"{where}: {first.get('msg', 'invalid')}") from e
         if settings.folder:
-            try:
-                scenery = session.xplane_dir(None) / "Custom Scenery"
-            except session.RefusedError:
-                scenery = None
-            try:
-                check_folder(Path(settings.folder), custom_scenery=scenery)
-            except FolderError as e:
-                raise HTTPException(422, f"folder: {e}") from e
+            problem = folder_problem(Path(settings.folder), session.xplane_or_none())
+            if problem is not None:
+                raise HTTPException(422, f"folder: {problem}")
         try:
             save_settings(settings)
         except (OSError, SettingsFileError) as e:
@@ -412,6 +439,8 @@ def live_router(
                 move_live(session.xplane_dir(None), settings.own_tiles)
             except (session.RefusedError, OSError, OsxpError) as e:
                 control.log(f"Live's line in X-Plane's list stays where it is: {e}")
+        if settings.rivers_fade and not before.rivers_fade:  # soft banks: their river masks
+            control.rivers_chosen()
         return settings.model_dump()
 
     return router

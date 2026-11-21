@@ -54,7 +54,7 @@ from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import dds, machine, pools, writes
+from . import dds, evict, machine, pools, writes
 from .cache import IMAGE, NO_IMAGERY, ChunkCache, Key
 from .evict import EVICT_SAFE_KM, TARGET, XPlaneWindow, pick, tiles_of, usage, xplane_tiles
 from .flightplan import MOVING_MS, FlightPlan, last_plan
@@ -83,6 +83,7 @@ from .region import (
     night_on,
     region_version,
     sources_of_pack,
+    water_record,
 )
 from .rings import (
     AIRPORT_ZOOM,
@@ -102,6 +103,7 @@ from .texture import (
     pieces_of,
     worker_ignores_ctrl_c,
 )
+from .waterphoto import is_water_name
 
 PLACEHOLDER_KM = 300.0  # every texture within this has at least its 256 px level
 LOAD_KM = (
@@ -445,6 +447,15 @@ class Streamer:
         self.built: dict[str, int] = dict(self.meta.get("textures", {}))
         # recorded with them: on the disk until their file is written again (evict.usage)
         self.copied_up: set[str] = set(copies_in(self.meta))
+        # the water photos holding a photo (orthostudio.live.waterphoto), by the level of the land
+        # they follow, a stale texture's too: on the disk with it (evict.usage)
+        water = self.meta.get("water")
+        self.water: dict[str, int] = {
+            n: lv
+            for n, lv in (water if isinstance(water, dict) else {}).items()
+            if isinstance(lv, int)
+        }
+        self._water_said = False  # a water photo that could not be made, said once
         self.built_version = 0  # one more at each change of built: the window's map
         # built without pieces that did not come: when to build them again, and how many times
         self.patchy: dict[str, tuple[float, int]] = {
@@ -520,7 +531,9 @@ class Streamer:
             TextureIndex(region=region)
             if region is not None
             else TextureIndex(
-                e.name for e in os.scandir(pack_dir / "textures") if e.name.endswith(".dds")
+                e.name
+                for e in os.scandir(pack_dir / "textures")
+                if e.name.endswith(".dds") and not is_water_name(e.name)
             )
         )
         others = region.others if region is not None else None  # the rest of it freed
@@ -585,6 +598,9 @@ class Streamer:
                 # then on again, squares flown meanwhile stayed without night for good (the review
                 # of 2026-11-11)
                 night=night_on(pack_dir),
+                # the same for the water: what the pack's record says its terrain files name
+                water=water_record(pack_dir),
+                watered=self._watered,
             )
             self.names.yielding = self.yielding
         self.night = night  # the night textures of the textures built (orthostudio.live.nightwork)
@@ -679,12 +695,18 @@ class Streamer:
         (NightWork._black): one way for the disk budget and a season's change. Raises ``OSError``
         for the day file; the night's is said and left (Windows refusing a file X-Plane holds
         open), the day texture neutral all the same."""
+        from . import waterphoto
+
         path = self.pack_dir / "textures" / name
         held = self.names is not None and self.names.holds(name)
         if held:
             self.names.pool.replace(self.top_of(name), path)  # type: ignore[union-attr]
+            waterphoto.follow(path, None)  # its water photo back to X-Plane's water alone
         else:
             path.unlink(missing_ok=True)
+            waterphoto.drop(path)  # and its mask: no square names them
+        with self.lock:
+            self.water.pop(name, None)
         if self.night is not None:
             try:
                 self.night.back_to_black(name)
@@ -706,7 +728,13 @@ class Streamer:
         if name in self.built:
             self.built[name] = level
             self.copied_up.discard(name)  # its file written again: no copy there any more
+            self.water.pop(name, None)  # made again at its size: said by _watered
             self._night_follows(name, level)
+
+    def _watered(self, name: str, level: int) -> None:
+        """Under ``self.lock``: a texture's water photo holds its land's photo, from ``level``, as
+        its square's files found or made it (orthostudio.live.names): counted (evict.usage)."""
+        self.water[name] = level
 
     def _fitting(self, name: str) -> bool:
         """Whether a texture is being set to a new zoom's size: not written meanwhile."""
@@ -760,14 +788,15 @@ class Streamer:
         if self.night is not None:  # its team, if any, ends with its jobs
             self.night.arrived()
 
-    def squares_ready(self, lat: float, lon: float) -> bool:
-        """Whether the files of X-Plane's window round (``lat``, ``lon``) are made: a start's, for
-        the plugin to let X-Plane go. True where the pack has every file (a pack of before), or
-        where making them failed (the log says it; X-Plane is not held for ever)."""
+    def squares_left(self, *points: tuple[float, float]) -> int:
+        """How many squares of X-Plane's window round the ``points`` have files not made yet: a
+        start's, which the plugin waits for before it lets X-Plane go, and its loading window
+        counts down once every texture is built. None where the pack has every file (a pack of
+        before), nor where making them failed (the log says it; X-Plane is not held for ever)."""
         names = self.names
         if names is None or names.crashed is not None:
-            return True
-        return names.ready(squares_round([(lat, lon)], 0))
+            return 0
+        return names.left(squares_round(points, 0))
 
     # --- planning -----------------------------------------------------------------------------
 
@@ -1290,7 +1319,10 @@ class Streamer:
         self, fut: Future, name: str, level: int, patched: bool = False, gen: int | None = None
     ) -> None:
         try:
-            fut.result()
+            got = fut.result()
+            self._water_built(
+                name, level, got[4] if isinstance(got, tuple) and len(got) > 4 else None
+            )
             with self.lock:  # the status line and the save copy them whole, from the main thread
                 if gen is not None and gen != self.look_gen:  # encoded in the season before
                     self.stale[name] = level
@@ -1314,6 +1346,33 @@ class Streamer:
         finally:
             with self.lock:
                 self.in_flight.pop(name, None)
+
+    def _water_built(self, name: str, level: int, water: int | str | None) -> None:
+        """A texture's water photo as its build left it (``texture.build_job``): recorded with the
+        level it follows, or not, and why it could not be made said once. Its name made between
+        the build's look for it and now (its square's files, ``orthostudio.live.names``) is made
+        here, from the land just built: rare, never left empty while the land holds a photo."""
+        from . import waterphoto
+
+        if isinstance(water, str):
+            if not self._water_said:
+                self._water_said = True
+                self.log(
+                    f"  the water photo of {name} could not be made ({water}): its water shows "
+                    "X-Plane's alone (said once)"
+                )
+            water = None
+        elif water is None:
+            land = self.pack_dir / "textures" / name
+            if os.path.lexists(land.with_name(waterphoto.water_name(name))):
+                water = waterphoto.follow(land, level)
+        if water is not None:
+            writes.add("water photos", evict.water_bytes(level, self.top_of(name)))
+        with self.lock:
+            if water is None:
+                self.water.pop(name, None)
+            else:
+                self.water[name] = water
 
     def build_loop(self) -> None:
         try:
@@ -1709,15 +1768,23 @@ class Streamer:
             behind=self.behind,
             lit=self._lit(),
             copied=self.copied_up,
+            water=self._water_now(),
         )
         for name, level in picks[:EVICT_BATCH]:
             path = self.pack_dir / "textures" / name
+            if self._fitting(name):  # its square's files set it, and its water photo, meanwhile
+                continue
             try:
                 if level >= NEUTRAL_LEVEL and self.names is not None:
                     self._neutral(name)
                 else:
                     top = dds.read_top(path)  # the file's size from its header: it keeps it
-                    downgrade(path, level, self.pack_dir / neutral_file(top), file_top=top)
+                    water = downgrade(path, level, self.pack_dir / neutral_file(top), file_top=top)
+                    with self.lock:
+                        if water is None:
+                            self.water.pop(name, None)
+                        else:
+                            self.water[name] = water
                     self._night_follows(name, level)
                     if level <= 4:
                         from .texture import needs_copy
@@ -1777,10 +1844,20 @@ class Streamer:
         """The night textures the disk counts, by level (orthostudio.live.nightwork)."""
         return {} if self.night is None else self.night.counted()
 
+    def _water_now(self) -> dict[str, int]:
+        """The water photos the disk counts, by the level they follow, a copy: the squares'
+        thread changes them meanwhile."""
+        with self.lock:
+            return dict(self.water)
+
     def disk_used(self, built: dict[str, int] | None = None) -> int:
         """The disk of the textures built, as their files hold them (evict.usage)."""
         return usage(
-            self.built if built is None else built, self.top_of, self._lit(), self.copied_up
+            self.built if built is None else built,
+            self.top_of,
+            self._lit(),
+            self.copied_up,
+            self._water_now(),
         )
 
     def save(self) -> None:
@@ -1791,6 +1868,7 @@ class Streamer:
             stale = dict(self.stale)
             look, season = self.look, self.season
             copied = sorted(n for n in self.copied_up if n in textures)
+            water = dict(self.water)
         lit = self._lit()  # the stale ones' too: their night is on the disk until put back black
         try:
             meta = load_built(self.pack_dir)
@@ -1805,6 +1883,7 @@ class Streamer:
             meta.pop("grown", None)  # a pack's record from when textures grew
             meta["patchy"] = patchy
             meta["lit"], meta["copied"] = lit, copied  # what their files hold besides (evict.usage)
+            meta["water"] = water
             meta["updated"] = meta["copied_with"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
             size = save_built(self.pack_dir, meta)
         except OSError as e:  # held by another program: as a stop between two saves, never fatal
@@ -1922,6 +2001,8 @@ class Arrival:
     counted: float = 0.0  # when it was worked out
     # the flight's day of the year from 0 and UTC hours, as the plugin read them in X-Plane
     held_time: tuple[float, float] | None = None
+    # where X-Plane says it loads the flight (the plugin's HOLD): its squares waited for too
+    held_at: tuple[float, float] | None = None
     loading: bool = (
         True  # X-Plane went through a load since: its position stopped, or the plugin spoke
     )
@@ -1947,14 +2028,19 @@ class Arrival:
         done = 1.0 - (left + night_left) / whole
         return min(done, 0.99) if left + night_left else done
 
-    def count(self, left: int, building: int, night_left: int, done: float) -> dict:
+    def count(
+        self, left: int, building: int, night_left: int, done: float, squares: int = 0
+    ) -> dict:
         """What a start waits for: its textures and its night ones, those all of whose photos are
-        in, its progress (:func:`start_count`)."""
+        in, its progress, and the squares round it whose files are not made yet; ready when no
+        texture and no square is left (:func:`start_count`)."""
         self.shown = {
             "left": left + night_left,
             "building": building + night_left,
             "night": night_left,
             "progress": done,
+            "squares": squares,
+            "ready": left + night_left == 0 and squares == 0,
         }
         return self.shown
 
@@ -2001,11 +2087,14 @@ COUNT_EVERY_S = 1.0
 
 def start_count(streamer: Streamer, arrival: Arrival, now: float, fresh: bool = False) -> dict:
     """What a start waits for, worked out in this one place: the textures X-Plane may show there
-    and, at night, the night ones round it, those all of whose photos are in, its progress. The
-    plugin and the pause window show it as it is (``fresh``), Live's window as it was at most
-    :data:`COUNT_EVERY_S` before, X-Plane held or not; the start is ready when none is left.
-    Live's window said ready, or nothing, while X-Plane waited for 8,700 night textures, and its
-    count stood still once X-Plane was let go (the review of 2026-11-11)."""
+    and, at night, the night ones round it, those all of whose photos are in, its progress, and
+    the squares of X-Plane's window round it and round where X-Plane says it loads whose files are
+    not made yet (:meth:`Streamer.squares_left`, ``sq=``). The plugin, the
+    pause window and the start's readiness take it as it is (``fresh``), Live's window as it was
+    at most :data:`COUNT_EVERY_S` before, X-Plane held or not; the start is ready when no texture
+    and no square is left. Live's window said ready, or nothing, while X-Plane waited for 8,700
+    night textures, and its count stood still once X-Plane was let go (the review of
+    2026-11-11)."""
     if not fresh and arrival.shown is not None and now - arrival.counted < COUNT_EVERY_S:
         return arrival.shown
     arrival.counted = now
@@ -2015,7 +2104,9 @@ def start_count(streamer: Streamer, arrival: Arrival, now: float, fresh: bool = 
         streamer.night.tick((arrival.lat, arrival.lon), arrival.held_time, streamer.built_copy)
         night_left, night = streamer.night.start_left(left), streamer.night.start_night
     done = arrival.progress(left, night_left, night)
-    return arrival.count(left, streamer.urgent_building(), night_left, done)
+    held_at = [arrival.held_at] if arrival.held_at is not None else []
+    squares = streamer.squares_left((arrival.lat, arrival.lon), *held_at)
+    return arrival.count(left, streamer.urgent_building(), night_left, done, squares)
 
 
 def may_have_read_early(arrival: Arrival, xplane_started: float | None) -> bool:
@@ -2112,8 +2203,9 @@ def progress_report(
         start = {
             "name": arrival.name,
             "held": arrival.held and not arrival.released,  # X-Plane waits on its loading screen
-            "ready": arrival.ready_at is not None,
             **start_count(streamer, arrival, now),
+            # ready once everything was (ready_at), the window's card gone for good
+            "ready": arrival.ready_at is not None,
             "seconds": now - arrival.since,
         }
     fresh = now - last_packet < FRESH_S
@@ -2318,6 +2410,7 @@ def run(
                     arrival.loading = True
                     if kind == "HOLD":
                         streamer.hold_at(lat, lon)
+                        arrival.held_at = (lat, lon)
                         if gate.held_day is not None and gate.held_utc is not None:
                             if arrival.held_time is None:
                                 utc = int(gate.held_utc) // 60
@@ -2341,12 +2434,9 @@ def run(
                         # takes, and goes on only once nothing has arrived for a minute
                         stalled = left > 0 and streamer.stalled_s() > STALL_S
                         # and the files of its squares made (orthostudio.live.names), where the
-                        # start was chosen and where X-Plane says it loads it
-                        ready = (
-                            shown["left"] == 0
-                            and streamer.squares_ready(arrival.lat, arrival.lon)
-                            and streamer.squares_ready(lat, lon)
-                        )
+                        # start was chosen and where X-Plane says it loads it (shown["squares"],
+                        # which the plugin counts down once every texture is built)
+                        squares, ready = shown["squares"], shown["ready"]
                         gate.answer(
                             addr,
                             ready or stalled,
@@ -2358,6 +2448,7 @@ def run(
                             lang=language(),
                             building=shown["building"],
                             night=shown["night"],
+                            squares=squares,
                         )
                         if stalled and not arrival.stalled:
                             arrival.stalled = True
@@ -2388,8 +2479,8 @@ def run(
                         elif not ready and not stalled and now - last_wait >= 5:
                             last_wait = now
                             log(
-                                "  X-Plane waits on its loading screen: the files of its squares "
-                                f"around {arrival.name} are being made"
+                                f"  X-Plane waits on its loading screen: the files of {squares} "
+                                f"squares around {arrival.name} are being made"
                             )
             if pauser is not None and pauser.paused_for is not None:
                 # X-Plane paused at a new location chosen in flight: its start is the click read in
@@ -2407,7 +2498,7 @@ def run(
                     left, building = shown["left"] - night_left, shown["building"] - night_left
                     done = shown["progress"]
                     stalled = left > 0 and streamer.stalled_s() > STALL_S
-                    ready = shown["left"] == 0 and streamer.squares_ready(arrival.lat, arrival.lon)
+                    squares, ready = shown["squares"], shown["ready"]
                     pause_window.show(
                         *lines(
                             place_in(arrival.name, lang),
@@ -2415,9 +2506,9 @@ def run(
                             shown["building"],
                             mbs,
                             took,
-                            shown["left"] > 0,
                             lang,
                             shown["night"],
+                            squares,
                         ),
                         shown["progress"],
                     )
@@ -2437,6 +2528,12 @@ def run(
                                 f"  X-Plane goes on after {took:.0f} s: everything it reads "
                                 f"around {arrival.name} is built"
                             )
+                    elif now - last_wait >= 5 and shown["left"] == 0:
+                        last_wait = now
+                        log(
+                            f"  X-Plane waits, paused: the files of {squares} squares around "
+                            f"{arrival.name} are being made"
+                        )
                     elif now - last_wait >= 5:
                         last_wait = now
                         log(
@@ -2450,13 +2547,12 @@ def run(
                     log(f"  X-Plane goes on: its new start was not read in {PAUSE_UNREAD_S:.0f} s")
                 else:  # the click not planned yet: its name as X-Plane wrote it, the files to come
                     where = place_in(prefs_start_name(pauser.paused_for), lang)
-                    pause_window.show(*lines(where, 0, 0, mbs, took, False, lang), 0.0)
+                    pause_window.show(*lines(where, 0, 0, mbs, took, lang), 0.0)
             if (
                 arrival is not None
                 and arrival.ready_at is None
                 and streamer.urgent_left() == 0
-                and start_count(streamer, arrival, now)["left"] == 0  # its night textures too
-                and streamer.squares_ready(arrival.lat, arrival.lon)
+                and start_count(streamer, arrival, now, fresh=True)["ready"]  # night, squares too
             ):
                 arrival.ready_at = now
                 log(f"  everything X-Plane will read around {arrival.name} is built")

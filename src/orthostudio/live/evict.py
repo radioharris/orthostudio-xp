@@ -43,7 +43,7 @@ from __future__ import annotations
 import math
 import sys
 from collections import Counter
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Collection, Mapping, Sequence
 from functools import cache
 
 from . import dds
@@ -127,9 +127,14 @@ def file_bytes(top: int, first: int, block: int = ALLOC_BLOCK) -> int:
     """Disk a texture file whose sharpest level is ``top`` takes with its levels from ``first``
     down written, and its header: each in the disk's steps of ``block`` bytes. The rest is a hole,
     or shares the neutral template's blocks."""
-    layout = dds.level_layout(top)
-    start = layout[max(0, first - top)][0]
-    end = dds.file_size(dds.size_of(top))
+    return span_bytes(dds.level_layout(top), max(0, first - top), block)
+
+
+def span_bytes(layout: Sequence[tuple[int, int]], index: int, block: int = ALLOC_BLOCK) -> int:
+    """Disk a file of ``layout`` takes with its levels from entry ``index`` down written, and its
+    header: each in the disk's steps of ``block`` bytes, the rest a hole."""
+    start = layout[index][0]
+    end = layout[-1][0] + layout[-1][1]
     low = start // block * block
     return -(-end // block) * block - low + (block if low else 0)  # the header's step apart
 
@@ -156,11 +161,26 @@ def night_bytes(level: int) -> int:
     return file_bytes(NIGHT_TOP, NIGHT_TOP + max(0, level))
 
 
+@cache
+def water_bytes(level: int, top: int = 0) -> int:
+    """Disk the water photo of a texture built from ``level``, in a file whose sharpest level is
+    ``top``, takes (orthostudio.live.waterphoto.make): its levels from one coarser than the land's
+    down, 2048 px at most, BC3. A 2048 px one whole, about 5.6 MB."""
+    from .waterphoto import first_level, layout, water_top
+
+    if level >= NEUTRAL_LEVEL:
+        return 0
+    wt = water_top(top)
+    lay = layout(wt)
+    return span_bytes(lay, min(first_level(level, top) - wt, len(lay) - 1))
+
+
 def usage(
     built: dict[str, int],
     top_of: Callable[[str], int] | None = None,
     lit: Mapping[str, int] | None = None,
     copied: Collection[str] = (),
+    water: Mapping[str, int] | None = None,
 ) -> int:
     """The disk of the textures built and of the night textures, as their files hold them;
     ``top_of``: each one's file size (its sharpest level), 4096 px for all when not given;
@@ -170,13 +190,18 @@ def usage(
     (orthostudio.live.texture.copy_up). Counted for every texture, the night took half of
     Windows' space by day before any was made, and an 8192 px copy, 33 MB, went uncounted; a
     night counted with its built texture only, a season's change left them all out (the reviews
-    of 2026-11-11)."""
+    of 2026-11-11). ``water``: the level each water photo holds a photo from, as ``lit``, a stale
+    texture's too (orthostudio.live.waterphoto): 5.6 MB for a sharp one, with every water body
+    masked 6,111 in a ten-minute flight at Stockholm (2026-11-17)."""
     lit, copied = lit or {}, frozenset(copied)  # looked up by name: in a list, 2.5 s a count
     nights = sum(night_bytes(level) for level in lit.values())
+    tops = top_of or (lambda _: 0)
+    waters = sum(water_bytes(level, tops(n)) for n, level in (water or {}).items())
     if top_of is None and not copied:
-        return levels_usage(Counter(built.values())) + nights
-    top_of = top_of or (lambda _: 0)
-    return sum(held_bytes(n, lv, top_of(n), None, copied) for n, lv in built.items()) + nights
+        return levels_usage(Counter(built.values())) + nights + waters
+    return (
+        sum(held_bytes(n, lv, tops(n), None, copied) for n, lv in built.items()) + nights + waters
+    )
 
 
 def held_bytes(
@@ -185,13 +210,19 @@ def held_bytes(
     top: int,
     lit: Mapping[str, int] | None = None,
     copied: Collection[str] = (),
+    water: Mapping[str, int] | None = None,
 ) -> int:
-    """Disk the file of ``name`` takes, built from ``level``, and its night texture, as
-    :func:`usage` counts them: a copy only where the file is built from its 4096 px level, the
-    one it copies (another since, by an older Live: none there)."""
+    """Disk the file of ``name`` takes, built from ``level``, and its night texture and its water
+    photo, as :func:`usage` counts them: a copy only where the file is built from its 4096 px
+    level, the one it copies (another since, by an older Live: none there)."""
     night = (lit or {}).get(name)
+    wet = (water or {}).get(name)
     day = texture_bytes(-1 if level == 0 and name in copied else level, top)
-    return day + (0 if night is None else night_bytes(night))
+    return (
+        day
+        + (0 if night is None else night_bytes(night))
+        + (0 if wet is None else water_bytes(wet, top))
+    )
 
 
 def levels_usage(levels: Mapping[int, int]) -> int:
@@ -209,14 +240,16 @@ def pick(
     behind: Callable[[str], bool] = lambda _: False,
     lit: Mapping[str, int] | None = None,
     copied: Collection[str] = (),
+    water: Mapping[str, int] | None = None,
 ) -> list[tuple[str, int]]:
     """[(texture, new level)] bringing ``built`` to 90 % of ``budget``, or as close as it can:
     sharp textures ``coarsen`` allows back to 256 px, then 256 px ones ``neutral`` allows (the same
     when not given) back to the neutral clone; those ``behind`` the aircraft first, then the least
-    recently seen. ``top_of``, ``lit``, ``copied``: what each file holds, as :func:`usage` takes
-    them; a texture made coarser has its night black and its copy gone."""
-    lit, copied = lit or {}, frozenset(copied)
-    total = usage(built, top_of, lit, copied)
+    recently seen. ``top_of``, ``lit``, ``copied``, ``water``: what each file holds, as
+    :func:`usage` takes them; a texture made coarser has its night black, its copy gone and its
+    water photo made from its new level (orthostudio.live.waterphoto.follow)."""
+    lit, copied, water = lit or {}, frozenset(copied), water or {}
+    total = usage(built, top_of, lit, copied, water)
     if total <= budget:
         return []
     neutral = coarsen if neutral is None else neutral
@@ -229,13 +262,14 @@ def pick(
     sharp = sorted((n for n, lv in built.items() if lv < 4 and coarsen(n)), key=first)
     for name in sharp:
         top = top_of(name)
-        total -= held_bytes(name, built[name], top, lit, copied) - texture_bytes(4, top)
+        coarse = texture_bytes(4, top) + (water_bytes(4, top) if name in water else 0)
+        total -= held_bytes(name, built[name], top, lit, copied, water) - coarse
         out.append((name, 4))
         if total <= target:
             return out
     small = sorted((n for n, lv in built.items() if lv == 4 and neutral(n)), key=first)
     for name in small:
-        total -= held_bytes(name, 4, top_of(name), lit, copied)
+        total -= held_bytes(name, 4, top_of(name), lit, copied, water)
         out.append((name, NEUTRAL_LEVEL))
         if total <= target:
             break

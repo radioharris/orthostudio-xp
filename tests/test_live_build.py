@@ -40,7 +40,7 @@ class BuildTest(unittest.TestCase):
         parents = {parent_keys(keys[0])[0]: jpeg((40, 40, 200))}
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / name
-            _, level, from_parent, blank = build_job((name, 1, pieces, parents, str(path)))
+            _, level, from_parent, blank, _ = build_job((name, 1, pieces, parents, str(path)))
             data = path.read_bytes()
         self.assertEqual((level, from_parent, blank), (1, 1, 0))
         self.assertEqual(len(data), dds.file_size())

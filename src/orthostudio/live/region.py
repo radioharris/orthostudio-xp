@@ -29,7 +29,7 @@ import os
 import struct
 import time
 from collections import Counter, defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -177,9 +177,14 @@ def sources_of_pack(pack_dir: Path) -> list[Path]:
 
 
 def _textures_by_zoom(pack_dir: Path) -> dict[int, list[str]]:
+    """The pack's textures by their zoom: not their water photos, whose names are read as theirs
+    (orthostudio.live.waterphoto.is_water_name), and which follow them."""
+    from .waterphoto import is_water_name
+
     out: dict[int, list[str]] = defaultdict(list)
     for entry in os.scandir(pack_dir / "textures"):
-        if entry.name.endswith(".dds") and not entry.name.startswith("."):
+        name = entry.name
+        if name.endswith(".dds") and not name.startswith(".") and not is_water_name(name):
             tex = parse_texture_name(entry.name)
             if tex is not None:
                 out[tex.zoom].append(entry.name)
@@ -426,17 +431,31 @@ def _remove_tree(folder: Path, log: Callable[[str], None], what: str) -> int:
     return removed
 
 
-def _to_squares(pack_dir: Path, log: Callable[[str], None]) -> None:
-    """A pack that had every square's files (versions 1 and 2): the ``.ter`` files, the water masks
-    and the neutral textures taken away, the textures built kept, made again per square as X-Plane
-    comes (orthostudio.live.names). Once, with X-Plane not running: a minute or two for the 684,000
-    ``.ter`` and 400,000 textures of Europe."""
+def _to_squares(
+    pack_dir: Path, log: Callable[[str], None], forget: Collection[str] = frozenset()
+) -> None:
+    """A pack that had every square's files (versions 1 and 2), or set up again: the ``.ter``
+    files, the water masks, the water photos and the neutral textures taken away, the textures
+    built kept, made again per square as X-Plane comes (orthostudio.live.names), and the night
+    textures of no texture (:func:`_drop_orphan_nights`). With X-Plane not running: a minute or two
+    for the 684,000 ``.ter`` and 400,000 textures of Europe. ``forget``: built textures no square
+    names any more (:func:`_unnamed`), forgotten first, so that they go as the neutral ones do."""
     from .names import MASK_RE
-    from .pack import load_built
+    from .pack import load_built, save_built
 
     t0 = time.monotonic()
     log(f"updating the pack in {pack_dir}: its files made per square from now on (once)")
-    built = set(load_built(pack_dir).get("textures", {}))
+    meta = load_built(pack_dir)
+    if forget:
+        for key in ("textures", "seen", "stale"):
+            if isinstance(meta.get(key), dict):
+                meta[key] = {n: v for n, v in meta[key].items() if n not in forget}
+        for key in ("patchy", "copied"):
+            if isinstance(meta.get(key), list):
+                meta[key] = [n for n in meta[key] if n not in forget]
+        save_built(pack_dir, meta)
+        log(f"  {len(forget)} textures no square names any more forgotten, deleted with them")
+    built = set(meta.get("textures", {}))
     removed = 0
     textures = pack_dir / "textures"
     if is_folder_link(textures):
@@ -453,10 +472,76 @@ def _to_squares(pack_dir: Path, log: Callable[[str], None]) -> None:
                 log(f"  {removed} neutral textures and masks removed...")
     terrain = _remove_tree(pack_dir / "terrain", log, "terrain files")
     (pack_dir / "terrain").mkdir(exist_ok=True)
+    _forget_water(pack_dir)  # every water photo went with the neutral textures: made again
+    nights = _drop_orphan_nights(pack_dir)
     log(
-        f"  {removed} neutral textures and masks, {terrain} terrain files removed in "
-        f"{time.monotonic() - t0:.0f} s; {len(built)} built textures kept"
+        f"  {removed} neutral textures and masks, {terrain} terrain files, {nights} night "
+        f"textures of no texture removed in {time.monotonic() - t0:.0f} s; {len(built)} built "
+        "textures kept"
     )
+
+
+def _drop_orphan_nights(pack_dir: Path) -> int:
+    """The night textures whose texture is gone from the pack's ``textures`` deleted, and
+    forgotten in the textures' record (``lit``): left, they stayed on the disk for good, counted
+    in Live's space while their lights were, never named again (a square's files take away only
+    the names of the regions' lists). Returns how many."""
+    from .names import night_name
+    from .pack import load_built, save_built
+
+    night, textures = pack_dir / NIGHT_FOLDER, pack_dir / "textures"
+    gone: set[str] = set()
+    with contextlib.suppress(FileNotFoundError, NotADirectoryError):
+        for entry in os.scandir(night):
+            if not entry.name.endswith("_LIT.dds"):
+                continue
+            day = entry.name[: -len("_LIT.dds")] + ".dds"
+            if night_name(day) == entry.name and not os.path.lexists(textures / day):
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(entry.path)
+                gone.add(day)
+    meta = load_built(pack_dir)
+    lit = meta.get("lit")
+    if gone and isinstance(lit, dict) and gone & set(lit):
+        meta["lit"] = {n: lv for n, lv in lit.items() if n not in gone}
+        save_built(pack_dir, meta)
+    return len(gone)
+
+
+def _unnamed(
+    pack_dir: Path, sources: Sequence[Path], changed: Sequence[Path], lists: Path | None
+) -> set[str]:
+    """The textures built on the squares of the regions that ``changed`` (updated: their textures
+    made again, some under other names) that no square of the regions names any more: kept, they
+    took Live's space for good. Never one of a square no region changed, so that a region only
+    away for a while (another tool's mesh on a disk unplugged) loses nothing; none where a region
+    reads as no texture at all (its folder unreadable a moment)."""
+    from .evict import tiles_of
+    from .names import one_region
+    from .overlays import squares_of
+    from .pack import load_built
+
+    squares = {square for source in changed for square in squares_of(source)}
+    if not squares:
+        return set()
+    named: set[str] = set()
+    for source in sources:
+        try:
+            one = one_region(source, lists)
+        except OSError:
+            return set()
+        names = {name for square in one.squares.values() for name in square}
+        if not names:
+            return set()
+        named |= names
+    meta = load_built(pack_dir)
+    out = set()
+    for key in ("textures", "stale"):
+        for name in meta.get(key) or {}:
+            texture = parse_texture_name(name)
+            if texture is not None and name not in named and tiles_of(texture) & squares:
+                out.add(name)
+    return out
 
 
 def texture_names(terrain_dir: Path) -> set[str]:
@@ -563,31 +648,56 @@ def _place_dir(src: Path, dst: Path, log: Callable[[str], None]) -> None:
 
 def _shared_files(sources: Sequence[Path], textures: Path) -> tuple[int, int]:
     """The files of the regions' ``textures`` folders that are neither textures nor water masks,
-    which every square's ``.ter`` may name (``water_transition.png``): placed once. Returns (how
-    many, how many copied from another disk)."""
+    which every square's ``.ter`` may name (``water_transition.png``): placed at each set-up, the
+    first region's where two have one, and placed again where the pack's is not the region's any
+    more (an update of the region brought another). Returns (how many placed, how many copied from
+    another disk)."""
     from .names import MASK_RE
 
     placed = copied = 0
+    seen: set[str] = set()
     for region in sources:
         with contextlib.suppress(OSError), os.scandir(region / "textures") as entries:
             for entry in entries:
                 name = entry.name
                 if name.endswith(".dds") or MASK_RE.match(name) or not entry.is_file():
                     continue
+                if name in seen:  # a region before this one's
+                    continue
+                seen.add(name)
                 target = textures / name
                 if os.path.lexists(target):
-                    continue
+                    if _same_bytes(Path(entry.path), target):
+                        continue
+                    target.unlink()
                 if place_file(Path(entry.path), target) == "copied":
                     copied += 1
                 placed += 1
     return placed, copied
 
 
+def _same_bytes(one: Path, other: Path) -> bool:
+    """Whether two files hold the same bytes: one file under two names, or alike."""
+    try:
+        a, b = os.stat(one), os.stat(other)
+        if os.path.samestat(a, b):
+            return True
+        if a.st_size != b.st_size:
+            return False
+        return one.read_bytes() == other.read_bytes()
+    except OSError:
+        return False
+
+
 def _fingerprints(sources: Sequence[Path]) -> dict[str, list[int]]:
     """What changes when a region is installed again or updated: its folders' times. The pack
     takes the files its DSFs name from the regions while Live streams (orthostudio.live.names),
-    so DSFs of before beside ``.ter`` files of now must not meet."""
-    from .names import terrain_folder
+    so DSFs of before beside ``.ter`` files of now must not meet. Its river masks' folder too,
+    where it has one (2026-11-17): put in place or made again, it changes what the terrain files
+    of its rivers name with soft banks, and squares made before must not keep X-Plane's water
+    alone beside faded ones. Only where it has one, so that every pack of before keeps its
+    fingerprints and is not set up again for nothing."""
+    from .names import RIVER_MASKS, terrain_folder
 
     out = {}
     for source in sources:
@@ -597,12 +707,19 @@ def _fingerprints(sources: Sequence[Path]) -> dict[str, list[int]]:
                 times.append(os.stat(source / sub).st_mtime_ns)
             except OSError:
                 times.append(0)
+        with contextlib.suppress(OSError):
+            times.append(os.stat(source / RIVER_MASKS.parts[0]).st_mtime_ns)
         out[str(source)] = times
     return out
 
 
 DECAL_RECORD = "_live/decal.json"
-"""The land's decal the ``.ter`` files of the pack name (:func:`set_decal`)."""
+"""The decal the ``.ter`` files of the pack name (:func:`set_decal`)."""
+
+DECAL_ON_WATER = True
+"""The photo laid on the water through a mask takes the decal too (``names.photo_on_water``,
+2026-11-16 for the sea, 2026-11-18 for rivers and lakes with soft banks): a pack whose record does
+not say so had its water's files made without it, and makes them again once."""
 
 
 def set_decal(
@@ -611,35 +728,37 @@ def set_decal(
     log: Callable[[str], None] = print,
     xplane_running: Callable[[], bool] = lambda: False,
 ) -> None:
-    """The ``.ter`` files of the pack made again when the land's decal Live's settings choose is
-    not the one they name (:func:`orthostudio.live.names.with_decal`): taken away, made again per
-    square as X-Plane comes. Not while X-Plane runs, which may be reading them: at the next start.
-    ``None``: the regions' own decals, nothing to do."""
+    """The ``.ter`` files of the pack made again when the decal Live's settings choose is not the
+    one they name, or when they were made before the photo on the water took it too
+    (:data:`DECAL_ON_WATER`, :func:`orthostudio.live.names.photo_on_water`): taken away, made
+    again per square as X-Plane comes. Not while X-Plane runs, which may be reading them: at the
+    next start. ``None``: the regions' own decals, nothing to do."""
     if decal is None:
         return
     record = pack_dir / DECAL_RECORD
     try:
-        was = json.loads(record.read_text(encoding="utf-8")).get("decal")
+        said = json.loads(record.read_text(encoding="utf-8"))
+        was, was_on_water = said.get("decal"), said.get("on_water", False)
     except (OSError, ValueError, AttributeError):
-        was = None  # a pack of before: its .ter files name the regions' decals
-    if was == decal:
+        was, was_on_water = None, False  # a pack of before: its .ter files name the regions' decals
+    if was == decal and (was_on_water == DECAL_ON_WATER or not decal):
         return
     terrain = pack_dir / "terrain"
     if terrain.is_dir() and next(terrain.glob("*.ter"), None) is not None:
         if xplane_running():
             log(
-                f"the land's decal {decal or 'none'}: the terrain files made already keep theirs "
-                "until Live's next start with X-Plane not running"
+                f"the decal {decal or 'none'}, on the photo over the water too: the terrain files "
+                "made already keep theirs until Live's next start with X-Plane not running"
             )
             return
         removed = _remove_tree(terrain, log, "terrain files")
         terrain.mkdir(exist_ok=True)
         log(
-            f"the land's decal is {decal or 'none'}: {removed} terrain files made again as "
-            "X-Plane comes"
+            f"the decal is {decal or 'none'}, on the photo over the water too: {removed} terrain "
+            "files made again as X-Plane comes"
         )
     record.parent.mkdir(parents=True, exist_ok=True)
-    record.write_text(json.dumps({"decal": decal}), encoding="utf-8")
+    record.write_text(json.dumps({"decal": decal, "on_water": DECAL_ON_WATER}), encoding="utf-8")
 
 
 NIGHT_RECORD = "_live/night.json"
@@ -701,6 +820,131 @@ def _forget_lit(pack_dir: Path) -> None:
         save_built(pack_dir, meta)
 
 
+WATER_RECORD = "_live/water.json"
+"""What the water terrain files of the pack name (:func:`set_water`)."""
+
+WATER_PHOTOS = 1
+"""The water photos' version (orthostudio.live.waterphoto) the pack's terrain files name: a pack
+whose record says another, or none (made before them), has its terrain files and water photos made
+again once."""
+
+
+@dataclass(frozen=True)
+class WaterRecord:
+    """What the water terrain files of Live's own mesh in the pack name: a water photo for the
+    sea's, and for rivers and lakes too where ``rivers_fade`` (``LiveSettings.rivers_fade``)."""
+
+    rivers_fade: bool = False
+
+
+def water_record(pack_dir: Path) -> WaterRecord | None:
+    """What the pack's water terrain files name (:func:`set_water`); None for files made before the
+    water photos, which name the masks: the squares made meanwhile follow them, until a start with
+    X-Plane not running makes them all again. What the pack's files say, not the settings, as
+    :func:`night_on`: a change while X-Plane ran must not leave squares of two kinds."""
+    try:
+        data = json.loads((pack_dir / WATER_RECORD).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or data.get("water_photos") != WATER_PHOTOS:
+        return None
+    return WaterRecord(rivers_fade=bool(data.get("rivers_fade")))
+
+
+def write_borders(pack_dir: Path) -> None:
+    """The two borders of rivers and lakes in the pack's ``textures``, at each start, written only
+    where missing or not as they should be (orthostudio.live.waterphoto.borders). Never into a
+    folder that is a link: a pack of before's, the region's own."""
+    from .waterphoto import borders
+
+    textures = pack_dir / "textures"
+    if is_folder_link(textures) or not textures.is_dir():
+        return
+    for name, data in borders().items():
+        path = textures / name
+        try:
+            if path.read_bytes() == data:
+                continue
+        except OSError:
+            pass
+        tmp = path.with_name(f"{TEMP_PREFIX}{os.getpid()}-{name}")
+        tmp.write_bytes(data)
+        replace_file(tmp, path)
+
+
+def set_water(
+    pack_dir: Path,
+    rivers_fade: bool,
+    log: Callable[[str], None] = print,
+    xplane_running: Callable[[], bool] = lambda: False,
+) -> None:
+    """The pack's terrain files made again when what their water should name is not what they
+    name (:func:`water_record`), as :func:`set_night` does: Live's settings turned soft banks on
+    rivers and lakes on or off, or the pack was made before the water photos (once). Not while
+    X-Plane runs, which may be reading them: at the next start then. The water photos and the masks
+    go with them, made again per square as X-Plane comes: a river's mask, copied for its water
+    photo, is no use once its banks are even, and every water photo is made again from its land
+    (orthostudio.live.names). The two borders are written at each start (:func:`write_borders`)."""
+    textures = pack_dir / "textures"
+    if is_folder_link(textures):  # a pack of before, not made per square yet: X-Plane was running
+        return
+    write_borders(pack_dir)
+    was = water_record(pack_dir)
+    wanted = WaterRecord(rivers_fade=rivers_fade)
+    if was == wanted:
+        return
+    what = (
+        "water photos for the water that fades"
+        if was is None
+        else f"rivers and lakes {'faded at their banks' if rivers_fade else 'evenly see-through'}"
+    )
+    terrain = pack_dir / "terrain"
+    if terrain.is_dir() and next(terrain.glob("*.ter"), None) is not None:
+        if xplane_running():
+            log(
+                f"{what}: the terrain files made already stay as they are until Live's next start "
+                "with X-Plane not running"
+            )
+            return
+        removed = _remove_tree(terrain, log, "terrain files")
+        terrain.mkdir(exist_ok=True)
+        log(f"{what}: {removed} terrain files made again as X-Plane comes")
+    gone = _drop_water(pack_dir)
+    if gone:
+        log(f"  {gone} water photos and masks deleted, made again with their squares")
+    record = pack_dir / WATER_RECORD
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(
+        json.dumps({"rivers_fade": rivers_fade, "water_photos": WATER_PHOTOS}), encoding="utf-8"
+    )
+    _forget_water(pack_dir)
+
+
+def _drop_water(pack_dir: Path) -> int:
+    """The pack's water photos and water masks deleted: no terrain file names them any more."""
+    from .names import MASK_RE
+    from .waterphoto import is_water_name
+
+    gone = 0
+    with contextlib.suppress(FileNotFoundError, NotADirectoryError):
+        for entry in os.scandir(pack_dir / "textures"):
+            if is_water_name(entry.name) or MASK_RE.match(entry.name):
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(entry.path)
+                    gone += 1
+    return gone
+
+
+def _forget_water(pack_dir: Path) -> None:
+    """The textures' record without water photos (orthostudio.live.evict.usage)."""
+    from .pack import load_built, save_built
+
+    meta = load_built(pack_dir)
+    if meta.get("water"):
+        meta["water"] = {}
+        save_built(pack_dir, meta)
+
+
 def _drop_night(pack_dir: Path, log: Callable[[str], None]) -> None:
     """The night textures, their black one and the roads kept for them, deleted (night lights off:
     no terrain file names them any more)."""
@@ -716,6 +960,55 @@ def _drop_night(pack_dir: Path, log: Callable[[str], None]) -> None:
         log(f"night lights off: {gone} night files deleted")
 
 
+def holds_files_of(pack_dir: Path, folder: Path) -> bool:
+    """Whether the pack holds files of ``folder``, clones or hard links of its DSFs and masks
+    (:func:`place_file`): its record keeps, for one of the regions it was set up from, the dates of
+    ``folder``'s DSFs and terrain files (:func:`_fingerprints`, its river masks' left out), which a
+    region renamed keeps (a region's kept old mesh, ``osxpregions.kept_dir``: the swap dates only
+    the new mesh) and which a start setting the pack up from another mesh replaces."""
+    meta = _marker(pack_dir)
+    was = meta.get("fingerprints") if isinstance(meta, dict) else None
+    if not isinstance(was, dict):
+        return False
+    now = _fingerprints([folder])[str(folder)][:2]
+    return any(isinstance(times, list) and times[:2] == now for times in was.values())
+
+
+def changed_regions(sources: Sequence[Path], pack_dir: Path) -> list[Path]:
+    """The regions that changed since the pack was set up from them (:func:`_fingerprints`):
+    updated, or given their river masks, the pack to be set up again with X-Plane not running."""
+    try:
+        old = json.loads((pack_dir / REGION_MARKER).read_text())
+    except (OSError, ValueError):
+        return []
+    now = _fingerprints(sources)
+    was = old.get("fingerprints", {}) if isinstance(old, dict) else {}
+    return [Path(k) for k, v in was.items() if k in now and now[k] != v]
+
+
+def _adding(had: Sequence[str], keys: Sequence[str]) -> bool:
+    """Whether the regions ``keys`` only add some after those the pack was set up from (``had``),
+    merged in: one that comes first (Live's own mesh, ``scenery.osxp_sources``) must take the
+    squares it has, and sets the pack up again."""
+    return bool(had) and set(had) < set(keys) and list(keys[: len(had)]) == list(had)
+
+
+def pack_to_redo(sources: Sequence[Path], pack_dir: Path) -> bool:
+    """Whether a start on ``sources`` sets the pack up again (:func:`setup_region`), its DSFs
+    replaced: a region changed since (:func:`changed_regions`: updated, given its river masks), or
+    the regions no longer those it was set up from, unless they only add some after them, merged
+    in (:func:`_adding`): one read from another folder (a kept old mesh in its place or back, the
+    Settings' Mesh), one deleted, one whose disk is not connected. Never with X-Plane running,
+    which may be reading the DSFs of before (``session.prepare``). A pack not set up: no."""
+    had = sources_of(_marker(pack_dir))
+    if not had:
+        return False
+    keys = [str(s) for s in sources]
+    return bool(changed_regions(sources, pack_dir)) or (
+        set(had) != set(keys) and not _adding(had, keys)
+    )
+
+
 def setup_region(
     source: Path | Sequence[Path],
     pack_dir: Path,
@@ -723,13 +1016,18 @@ def setup_region(
     log: Callable[[str], None] = print,
     zooms: Zooms | None = None,
     xplane_running: Callable[[], bool] = lambda: False,
+    lists: Path | None = None,
 ) -> dict:
     """Make ``pack_dir`` hold the AutoOrtho regions of ``source`` (one, or several: Europe, North
     America...): their DSFs, their shared files, the neutral texture; keep the textures already
     built. A region added since is merged in, once; one taken away sets the pack up again. A pack
     of before, which had every square's files, has them taken away once (:func:`_to_squares`), not
     while X-Plane runs, which may be reading them. ``zooms``: what the textures are laid out for,
-    the first time (:func:`relayout` after)."""
+    the first time (:func:`relayout` after). A region changed since (:func:`changed_regions`) sets
+    the pack up again, the textures built on its squares that no square names any more going too
+    (:func:`_unnamed`, read from the lists kept in ``lists``: ``names.one_region``); a start with
+    X-Plane running on a pack to set up again is refused before (:func:`pack_to_redo`,
+    ``session.prepare``)."""
     sources = [source] if isinstance(source, Path) else list(source)
     keys = [str(s) for s in sources]
     marker = pack_dir / REGION_MARKER
@@ -737,16 +1035,13 @@ def setup_region(
     had = sources_of(old)
     version = old.get("version", 1) if old else REGION_VERSION
     now = _fingerprints(sources)
-    changed = [k for k, v in old.get("fingerprints", {}).items() if k in now and now[k] != v]
-    if changed and xplane_running():  # X-Plane may be reading the DSFs of before
-        log(
-            f"the region {Path(changed[0]).name} changed since the pack was set up: it is set up "
-            f"again at Live's next start with X-Plane not running"
-        )
-    elif changed:
-        log(f"the region {Path(changed[0]).name} changed since the pack was set up: set up again")
-        force = True
-    if old and not force and set(had) == set(keys):
+    # set up again or merged into by the one rule a start reads too (pack_to_redo): a start with
+    # X-Plane running on a pack to set up again is refused before (session.prepare)
+    changed = changed_regions(sources, pack_dir)
+    if changed:
+        log(f"the region {changed[0].name} changed since the pack was set up: set up again")
+    redo = force or pack_to_redo(sources, pack_dir)
+    if old and not redo and set(had) == set(keys):
         if "fingerprints" not in old:  # a pack of before: what its regions are from now on
             old["fingerprints"] = now
             marker.write_text(json.dumps(old))
@@ -765,12 +1060,15 @@ def setup_region(
         return old
     t0 = time.monotonic()
     names_of = ", ".join(s.name for s in sources)
-    # only regions to add after those of before: merged in. One that comes first (Live's own
-    # mesh, orthostudio.live.scenery.osxp_regions) must take the squares it has: merged in, the
-    # DSFs of before stayed and X-Plane read them with that region's terrain files (2026-10-18)
-    adding = bool(had) and set(had) < set(keys) and keys[: len(had)] == had
+    # only regions added after those of before (_adding): merged in. One that comes first (Live's
+    # own mesh, orthostudio.live.scenery.osxp_sources) must take the squares it has: merged in,
+    # the DSFs of before stayed and X-Plane read them with that region's terrain files
+    # (2026-10-18); never when the pack is set up again (``redo``, a region of before changed
+    # included): its DSFs of before would stay beside its lists of now
+    adding = bool(had) and not redo
     if old and (version < REGION_VERSION or not adding) and not xplane_running():
-        _to_squares(pack_dir, log)  # the files of the regions of before
+        forget = _unnamed(pack_dir, sources, changed, lists) if changed else set()
+        _to_squares(pack_dir, log, forget)  # the files of the regions of before
     if adding:
         new = [s for s in sources if str(s) not in had]
         log(f"adding {', '.join(s.name for s in new)} to the region in {pack_dir} (once)")
@@ -828,9 +1126,11 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
     Only the textures the streamer recorded as built are touched (``_live/ortho.json``), so a reset
     takes seconds; those built in another season and not made neutral yet too (``stale``). Their
     night textures are black again too: one made before stayed over the neutral texture until its
-    texture was built again at night."""
-    from .names import NeutralPool, NightPool, night_name
+    texture was built again at night. Their water photos are back to X-Plane's water alone, made
+    again from them once built (orthostudio.live.waterphoto)."""
+    from .names import NeutralPool, NightPool, WaterPool, night_name
     from .pack import load_built, save_built
+    from .waterphoto import water_name, water_top
 
     meta = load_built(pack_dir)
     built = {**meta.get("stale", {}), **meta.get("textures", {})}
@@ -838,12 +1138,17 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
     pool = NeutralPool(pack_dir)
     nights: NightPool | None = None
     lit_too = meta.get("lit") if isinstance(meta.get("lit"), dict) else {}
-    for name in {**built, **lit_too}:  # a night lit over a neutral texture too (Windows refused)
+    water_too = meta.get("water") if isinstance(meta.get("water"), dict) else {}
+    waters = WaterPool(pack_dir)
+    for name in {**built, **lit_too, **water_too}:  # a night lit over a neutral texture too
         path = pack_dir / "textures" / name
         tex = parse_texture_name(name)
         top = 0 if tex is None else _laid_out_top(zooms, layout, tex.zoom)
         if name in built and path.exists():
             pool.replace(top, path)
+        water = path.with_name(water_name(name))
+        if name in water_too and water.exists():
+            waters.replace(water_top(top), water)
         lit = pack_dir / NIGHT_FOLDER / night_name(name)
         if lit.exists():
             nights = nights or NightPool(pack_dir)
@@ -851,6 +1156,7 @@ def reset_built(pack_dir: Path, log: Callable[[str], None] = print) -> int:
     if meta:
         meta["textures"], meta["seen"], meta["patchy"], meta["stale"] = {}, {}, [], {}
         meta["lit"], meta["copied"] = {}, []  # their nights black, their copies gone
+        meta["water"] = {}  # their water photos X-Plane's water alone
         meta.pop("grown", None)
         save_built(pack_dir, meta)
     from .nightwork import ROADS_FOLDER

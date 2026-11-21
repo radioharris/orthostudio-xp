@@ -151,18 +151,46 @@ class NamesTest(unittest.TestCase):
 
     def test_the_window_says_the_plugins_lines(self):
         self.assertEqual(
-            lines("LSGG piste 22", 1234, 3, 14.25, 7.4, True, "fr"),
+            lines("LSGG piste 22", 1234, 3, 14.25, 7.4, "fr"),
             (
                 "Chargement de l'ortho autour de LSGG piste 22",
                 "1234 textures à construire  -  14,2 Mo/s  -  7 s",
             ),
         )
         self.assertEqual(
-            lines("LSGG runway 22", 5, 5, 0.0, 9, True, "en")[1],
+            lines("LSGG runway 22", 5, 5, 0.0, 9, "en")[1],
             "5 textures to build  -  every photo in, building  -  9 s",
         )
         self.assertEqual(
-            lines("LSGG runway 22", 0, 0, 0.0, 2, False, "en")[1], "preparing the files  -  2 s"
+            lines("LSGG runway 22", 0, 0, 0.0, 2, "en")[1], "preparing the files  -  2 s"
+        )
+
+    def test_the_window_says_the_squares_once_every_texture_is_built(self):
+        """As the plugin does (live_gate.c's show()): the squares whose files are being made, once
+        no texture is left (sq=)."""
+        self.assertEqual(
+            lines("LSGG piste 04", 0, 0, 0.0, 12.3, "fr", squares=36),
+            (
+                "Chargement de l'ortho autour de LSGG piste 04",
+                "Préparation du sol : 36 carrés  -  12 s",
+            ),
+        )
+        self.assertEqual(
+            lines("LSGG piste 04", 0, 0, 0.0, 14, "fr", squares=1)[1],
+            "Préparation du sol : 1 carré  -  14 s",
+        )
+        self.assertEqual(
+            lines("LSGG runway 04", 0, 0, 0.0, 15, "en", squares=2)[1],
+            "Preparing the ground: 2 squares  -  15 s",
+        )
+        self.assertEqual(
+            lines("LSGG runway 04", 0, 0, 0.0, 16, "en", squares=1)[1],
+            "Preparing the ground: 1 square  -  16 s",
+        )
+        # textures left: they first, whatever squares wait
+        self.assertEqual(
+            lines("LSGG runway 04", 3, 0, 5.2, 2, "en", squares=36)[1],
+            "3 textures to build  -  5.2 MB/s  -  2 s",
         )
 
 

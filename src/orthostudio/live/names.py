@@ -55,8 +55,11 @@ RING = 1  # squares made round X-Plane's window: the next column's are there bef
 KEEP = 2  # squares farther than this from X-Plane's window lose their files
 LAND, WATER, SEA = 1, 2, 4  # a texture's land, its rivers' and lakes' overlay, its sea's overlay
 TER_KINDS = (("", LAND), ("_water_overlay", WATER), ("_sea_overlay", SEA))  # its .ter files
+SEA_OVERLAY_TER = "_sea_overlay.ter"
+"""The end of a terrain file's name laying the photo on water with a mask, which takes the decal."""
 OTHER = 8  # a .ter of another kind: its name kept apart (:attr:`RegionTextures.others`)
 MASK_RE = re.compile(r"^(\d+)_(\d+)_ZL(\d{2})\.png$")  # a water mask: a sea overlay's border
+RIVER_MASKS = Path("rivers") / "textures"  # where a region of Live's mesh has its rivers' masks
 RELEASE_BATCH = 4  # squares taken away at once, between the squares X-Plane will need
 FAIL_RETRY_S = 10.0  # a square whose files could not all be made is tried again after this...
 FAIL_RETRY_MAX_S = 300.0  # ... doubled each time, up to this
@@ -448,15 +451,22 @@ class SquareWaitError(Exception):
     (orthostudio.live.region.set_zooms); made a moment later, once it is built at the new one."""
 
 
-def with_decal(ter: bytes, decal: str) -> bytes:
-    """A ``.ter`` file with the land's decal Live's settings choose: its ``DECAL_LIB`` line naming
-    ``lib/g10/decals/<decal>``, or gone when ``decal`` is empty. A file with no such line (the sea,
-    the water's overlays) is left as it is: decals go on the land only."""
+def with_decal(ter: bytes, decal: str, *, on_water: bool = False) -> bytes:
+    """A ``.ter`` file with the decal Live's settings choose: its ``DECAL_LIB`` line naming
+    ``lib/g10/decals/<decal>``, or gone when ``decal`` is empty. ``on_water``: a file laying the
+    photo on the water through a mask (:func:`photo_on_water`), which takes it too, its line put
+    before ``WET`` as Build's pack puts it, so that the grain goes on where the photo does rather
+    than stopping at the shore (2026-11-16, as Ortho4XP does). Any other file with no such line is
+    left as it is."""
     from orthostudio.decals import decal_lib
 
     lines = ter.split(b"\n")
     if not any(line.startswith(b"DECAL_LIB ") for line in lines):
-        return ter
+        if not (on_water and decal):
+            return ter
+        from orthostudio.textures.ter import with_decal as with_decal_line
+
+        return with_decal_line(ter.decode("latin-1"), decal).encode("latin-1")
     out = []
     for line in lines:
         if line.startswith(b"DECAL_LIB "):
@@ -510,21 +520,63 @@ class NightPool(NeutralPool):
         return path
 
 
-def _night_inodes(pack: Path) -> set[tuple[int, int]]:
-    """(device, inode) of the black night texture and its copies."""
+class WaterPool(NeutralPool):
+    """The placeholders the names of water photos not made lead to (orthostudio.live.waterphoto):
+    one of each size, its header and a hole, X-Plane's water alone, and its copies."""
+
+    def path(self, top: int, copy: int = 0) -> Path:
+        from .dds import size_of
+
+        base = self.pack_dir / "_live" / f"water-{size_of(top)}.dds"
+        return base if copy == 0 else base.with_name(f"{base.stem}-{copy + 1}{base.suffix}")
+
+    def _ensure(self, top: int, copy: int) -> Path:
+        from .waterphoto import write_placeholder
+
+        path = self.path(top, copy)
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            write_placeholder(path, top)
+        return path
+
+
+WATER_PLACEHOLDERS = "water-*.dds"  # the water photos' placeholders and their copies
+NIGHT_BLACK = "night*.dds"  # the black night texture and its copies
+NEUTRAL = "neutral*.dds"  # the neutral texture and its copies: what a texture's name leads to
+# until the texture is built
+
+
+def _inodes(pack: Path, pattern: str) -> set[tuple[int, int]]:
+    """(device, inode) of the files of the pack's ``_live`` folder ``pattern`` names: one file and
+    its copies, which a name made from it leads to until something is written there."""
     out = set()
-    for path in (pack / "_live").glob("night*.dds"):
+    for path in (pack / "_live").glob(pattern):
         with contextlib.suppress(OSError):
             st = os.stat(path)
             out.add((st.st_dev, st.st_ino))
     return out
 
 
-def _ter_text(text: bytes, decal: str | None, lit: str | None, night: bool) -> bytes:
-    """A ``.ter`` file as the pack has it: the decal Live's settings choose, and its night texture
-    when the night lights are on (``lit``: the land's; None for the water's files)."""
+def photo_on_water(path: str, water: tuple | None) -> bool:
+    """Whether the terrain file ``path`` lays the photo on the water through a mask, so takes the
+    decal as the land does (:func:`with_decal`): one naming Live's water photo (``water``, from
+    ``waterphoto.ter_text``: the sea's, and rivers' and lakes' with soft banks); else, a file as
+    its region or its name makes it, the sea's (``_sea_overlay``, its mask its border). Never the
+    even grey border of rivers and lakes, which lays the photo over all their water, nor X-Plane's
+    water alone: no grain on open water."""
+    if water is not None:
+        return water[0] == "photo"
+    return path.endswith(SEA_OVERLAY_TER)
+
+
+def _ter_text(
+    text: bytes, decal: str | None, lit: str | None, night: bool, *, on_water: bool = False
+) -> bytes:
+    """A ``.ter`` file as the pack has it: the decal Live's settings choose (on the photo laid on
+    the water too, ``on_water``: :func:`with_decal`), and its night texture when the night lights
+    are on (``lit``: the land's; None for the water's files)."""
     if decal is not None:
-        text = with_decal(text, decal)
+        text = with_decal(text, decal, on_water=on_water)
     return with_night(text, lit) if night else text
 
 
@@ -553,23 +605,12 @@ def _write_new(dst: str, data: bytes) -> None:
     os.close(fd)
 
 
-def _neutral_inodes(pack: Path) -> set[tuple[int, int]]:
-    """(device, inode) of the neutral texture and its copies: what a texture's name leads to until
-    the texture is built."""
-    out = set()
-    for path in (pack / "_live").glob("neutral*.dds"):
-        with contextlib.suppress(OSError):
-            st = os.stat(path)
-            out.add((st.st_dev, st.st_ino))
-    return out
-
-
 def built_files(pack: Path) -> list[str]:
     """The textures whose file holds something built: their name no longer leads to the neutral
     texture or one of its copies. Read once, when Live's record of its textures was lost
     (orthostudio.live.pack.load_built): what it named stayed on the disk, uncounted, never made
     neutral again nor taken away with its square (the review of 2026-11-17)."""
-    neutral = _neutral_inodes(pack)
+    neutral = _inodes(pack, NEUTRAL)
     out = []
     with contextlib.suppress(FileNotFoundError), os.scandir(pack / "textures") as entries:
         for entry in entries:
@@ -596,6 +637,13 @@ def _neutral_tops(pack: Path) -> dict[tuple[int, int], int]:
 
 _POOLS: dict[str, NeutralPool] = {}  # a worker's neutral textures, by pack
 _NIGHT_POOLS: dict[str, NeutralPool] = {}  # its black night textures
+_WATER_POOLS: dict[str, NeutralPool] = {}  # its water photos' placeholders
+
+
+def _water_pool(pack_dir: str) -> NeutralPool:
+    return _WATER_POOLS.get(pack_dir) or _WATER_POOLS.setdefault(
+        pack_dir, WaterPool(Path(pack_dir))
+    )
 
 
 def _ignore_ctrl_c() -> None:
@@ -667,7 +715,14 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
     (:func:`with_night`), its black name then made first, its ``.ter`` there or not (one left
     naming a night not there gets it back), and named only if it is there (:func:`_night_named`):
     a night that could not be named is said in ``unlit``, its land naming none, a ``.ter`` there
-    written again without it (:func:`_unlit`). Every error is reported, none stops the others."""
+    written again without it (:func:`_unlit`); a ``make`` one a third, what its water names
+    (:func:`orthostudio.live.waterphoto.ter_text`). ("water", top, destination, land, level built
+    or None), a water photo: made from its land where the land is built and it holds no photo yet
+    (``watered``, with those that hold one; why one could not be made in ``water_errors``, never
+    an error of the square), else a name of the placeholder of its size if not there;
+    ("drop_water", path, mask), a water photo and its mask removed while it holds no photo, kept
+    with its texture else, as a night texture built is. Every error is reported, none stops the
+    others."""
     pack = Path(pack_dir)
     pool = _POOLS.get(pack_dir) or _POOLS.setdefault(pack_dir, NeutralPool(pack))
     placed = dropped = 0
@@ -680,6 +735,10 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
     tops: dict[tuple[int, int], int] | None = None
     fitted: dict[str, int] = {}
     stale: list[str] = []
+    watered: dict[str, int] = {}  # water photos holding a photo: the level of the land they follow
+    filled: list[str] = []  # those made just now from their land
+    water_errors: list[tuple[str, str]] = []
+    placeholders: set[tuple[int, int]] | None = None
     for op in ops:
         kind = op[0]
         try:
@@ -695,16 +754,61 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
                     if lit is None:
                         _unlit(op[2])
                 if not os.path.lexists(op[2]):
+                    water = None
                     if kind == "ter":
                         with open(op[1], "rb") as f:
                             text = f.read()
                     else:  # a region naming its terrain files: made from the name
                         text = made_ter(os.path.basename(op[2]))
-                    _write_new(op[2], _ter_text(text, op[3], lit, night))
+                        water = op[6] if len(op) > 6 else None  # what its water names
+                        if water is not None:
+                            from .waterphoto import ter_text
+
+                            text = ter_text(text, water)
+                    on_water = photo_on_water(op[2], water)
+                    _write_new(op[2], _ter_text(text, op[3], lit, night, on_water=on_water))
                     placed += 1
+            elif kind == "water":  # a water photo, before the terrain files naming it
+                from . import waterphoto
+
+                top, water, land = op[1], Path(op[2]), Path(op[3])
+                level = fitted.get(land.name, op[4])  # set to the zoom's size just now
+                if placeholders is None:
+                    placeholders = _inodes(pack, WATER_PLACEHOLDERS)
+                if os.path.lexists(water):
+                    st = os.stat(water)
+                    empty = (st.st_dev, st.st_ino) in placeholders
+                else:
+                    _water_pool(pack_dir).link(top, water)
+                    st = os.stat(water)  # the placeholder, perhaps made by this first name
+                    placeholders.add((st.st_dev, st.st_ino))
+                    empty = True
+                if level is not None and empty:
+                    try:
+                        made = waterphoto.make(land, level)
+                    except Exception as e:  # its placeholder stays: X-Plane's water alone
+                        water_errors.append((land.name, f"{type(e).__name__}: {e}"))
+                        made = None
+                    if made is not None:
+                        watered[land.name] = made
+                        filled.append(land.name)
+                elif level is not None:  # it holds its land's photo: made with it
+                    watered[land.name] = level
+            elif kind == "drop_water":
+                if placeholders is None:
+                    placeholders = _inodes(pack, WATER_PLACEHOLDERS)
+                try:
+                    st = os.stat(op[1])
+                except FileNotFoundError:
+                    st = None
+                if st is None or (st.st_dev, st.st_ino) in placeholders:
+                    for path in (op[1], op[2]):
+                        with contextlib.suppress(FileNotFoundError):
+                            os.unlink(path)
+                            dropped += 1
             elif kind == "drop_night":  # never while its land .ter, which names it, is there
                 if night_black is None:
-                    night_black = _night_inodes(pack)
+                    night_black = _inodes(pack, NIGHT_BLACK)
                 land = os.path.basename(op[1])[: -len("_LIT.dds")] + ".ter"
                 st = os.stat(op[1])
                 if (st.st_dev, st.st_ino) in night_black and not os.path.lexists(
@@ -744,6 +848,9 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
                     stale.append(dst.name)
                 elif neutral_name or op[3] is None:  # nothing built in it: the neutral of its size
                     pool.replace(top, dst)
+                    from .waterphoto import follow
+
+                    follow(dst, None)  # its water photo, if any, the placeholder of its size
                 else:  # its neutral texture made first: another process may not have yet
                     from .region import ensure_neutral
                     from .texture import resize
@@ -754,7 +861,7 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
                 dropped += 1
             elif kind == "drop_name":
                 if neutral is None:
-                    neutral = _neutral_inodes(pack)
+                    neutral = _inodes(pack, NEUTRAL)
                 st = os.stat(op[1])
                 if (st.st_dev, st.st_ino) in neutral:
                     os.unlink(op[1])
@@ -779,6 +886,9 @@ def run_ops(pack_dir: str, ops: Sequence[tuple]) -> dict:
         "unlit": unlit,
         "fitted": fitted,
         "stale": stale,
+        "watered": watered,
+        "filled": filled,
+        "water_errors": water_errors,
     }
 
 
@@ -804,7 +914,20 @@ class Names:
     X-Plane went on without it (three starts, 2026-10-10). ``fitting``: the textures being set,
     which the builder does not write meanwhile. One process sets them, at a start too: shared
     between the builder's processes, they took the start's encoders from the photos X-Plane waits
-    for, 7 s more on an 8-core Shadow PC at a cold start, 14 s at a new zoom (2026-10-11)."""
+    for, 7 s more on an 8-core Shadow PC at a cold start, 14 s at a new zoom (2026-10-11).
+
+    ``water``: what the water terrain files of Live's own mesh name, as the pack's record says
+    (``region.water_record``, never the settings, as ``night``): None, the masks, as before the
+    water photos; else a water photo for the sea's (``waterphoto``), and for rivers and lakes the
+    even grey border, or with ``rivers_fade`` their water photo where their region has their mask
+    (:meth:`_water_mask`). A texture's water photo and its mask are made with its other files,
+    before the terrain files naming them, the water photo from its land where the land is built
+    already (a texture built before its square was made, before the water photos, or set to a new
+    zoom): never one holding no photo beside a land that holds one, which X-Plane would show as
+    its water alone until the land was built again. ``watered``, under ``lock``: a water photo
+    holding its land's photo, and the level it follows (evict.usage). Taken away with its square
+    only while it holds none: one made stays with its texture, as a night texture does, or each
+    flight back over the same water would have it made again."""
 
     def __init__(
         self,
@@ -823,8 +946,12 @@ class Names:
         refit: Callable[[str, int], None] = lambda name, level: None,
         decal: str | None = None,
         night: bool = False,
+        water=None,
+        watered: Callable[[str, int], None] = lambda name, level: None,
     ):
         self.pack_dir = pack_dir
+        self.water = water  # region.WaterRecord, or None: the water terrain files name the masks
+        self.watered = watered
         self.decal = decal  # the land's decal of its .ter files (:func:`with_decal`); None: theirs
         self.night = night  # the land's .ter files name a night texture (:func:`with_night`)
         self.by_tile = textures  # the streamer's index: textures by the square of their centre
@@ -874,8 +1001,10 @@ class Names:
                         out.append(entry)
         return out
 
-    def _files(self, entry: Entry) -> Iterator[tuple[str, str]]:
-        """(folder, name) of the ``.ter`` files and the water mask of a texture."""
+    def _files(self, entry: Entry, own: bool = False) -> Iterator[tuple[str, str]]:
+        """(folder, name) of the ``.ter`` files and the water mask of a texture; not the mask of a
+        texture of Live's own mesh (``own``) in a pack whose water terrain files name water
+        photos: its own operations make it and take it away with its water photo."""
         name, _, _, _, kinds, _ = entry
         stem = name[: -len(".dds")]
         for suffix, bit in TER_KINDS:
@@ -884,8 +1013,56 @@ class Names:
         if kinds & OTHER:
             for other in self.others.get(name, ()):
                 yield "terrain", other
-        if kinds & SEA:  # a sea overlay: its border is the texture's water mask
+        if kinds & SEA and not (own and self.water is not None):  # the sea's border: its mask
             yield "textures", mask_name(name)
+
+    def _own(self) -> list[bool]:
+        """Whether each region is of Live's own mesh, naming its terrain files
+        (:data:`TERRAIN_LISTS`): the terrain files Live makes, and the water photos, are theirs
+        alone; AutoOrtho's regions and another tool's mesh keep their copied files as they are."""
+        return [own_mesh(source) for source in self.sources]
+
+    def _water_mask(self, entry: Entry, own: list[bool]) -> Path | None:
+        """Where the region has the water mask of a texture that gets a water photo, None for one
+        that gets none: a texture of Live's own mesh whose sea fades (its mask in the region's
+        ``textures``), or whose rivers and lakes do with ``rivers_fade`` and their region has their
+        mask (in ``textures`` where the texture has sea too, else in :data:`RIVER_MASKS`). A
+        region's river masks never change while Live streams: they take their place with Live
+        stopped and X-Plane not running (orthostudio.live.osxpregions), and the next start's set-up
+        makes the region's terrain files again for them (region._fingerprints)."""
+        name, _, _, _, kinds, i = entry
+        if self.water is None or not self.sources or not own[i]:
+            return None
+        source, mask = self.sources[i], mask_name(name)
+        if kinds & SEA:
+            return source / "textures" / mask
+        if kinds & WATER and self.water.rivers_fade:
+            for folder in (Path("textures"), RIVER_MASKS):
+                if (source / folder / mask).is_file():
+                    return source / folder / mask
+        return None
+
+    def _water_ter(self, file: str, name: str, photo: bool) -> tuple | None:
+        """What the water terrain file ``file`` of a texture of Live's own mesh names
+        (:func:`orthostudio.live.waterphoto.ter_text`): its water photo, ``photo`` where it has
+        one; for rivers and lakes that do not fade, the even border; for those that fade without
+        a mask, the border that leaves X-Plane's water alone. None: the file as its name makes it,
+        the land, and every file of a pack whose terrain files name the masks."""
+        from . import waterphoto
+        from .dds import size_of
+
+        if self.water is None:
+            return None
+        if file.endswith("_sea_overlay.ter") or (
+            file.endswith("_water_overlay.ter") and self.water.rivers_fade
+        ):
+            if photo:
+                side = size_of(waterphoto.water_top(self.top_of(name)))
+                return ("photo", waterphoto.water_name(name), side)
+            return ("border", waterphoto.NO_BORDER)
+        if file.endswith("_water_overlay.ter"):
+            return ("border", waterphoto.EVEN_BORDER)
+        return None
 
     def _present(self) -> set[Square]:
         """The squares whose ``.ter`` files are in the pack already: made before the streamer
@@ -911,13 +1088,18 @@ class Names:
     def make(self, square: Square) -> tuple[int, int]:
         """Every file ``square`` needs, those there already left: (files placed, texture names
         made). Its textures first, each set to the zoom's size if a new zoom left it another
-        (region.set_zooms), then its terrain files, which make X-Plane read them: never one of
-        another size, never a night texture not there (:func:`_night_named`: a land whose night
+        (region.set_zooms), with their water masks and water photos (the class's docstring), then
+        its terrain files, which make X-Plane read them: never one of another size, nor one naming
+        a file not there, a night texture's included (:func:`_night_named`: a land whose night
         could not be named has no lights, said in the log). Raises :class:`SquareError` when some
         could not be made, :class:`SquareWaitError` while a texture being built has still its old
         size."""
+        from .waterphoto import water_name, water_top
+
         entries = self.textures_on(square)
         names = [entry[0] for entry in entries]
+        own = self._own()
+        masks = {e[0]: mask for e in entries if (mask := self._water_mask(e, own)) is not None}
         with self.lock:
             building = {name for name in names if self.building(name)}
             claimed = [name for name in names if name not in building]
@@ -928,11 +1110,22 @@ class Names:
 
         for top in {self.top_of(name) for name in claimed}:  # here, before processes share them
             ensure_neutral(self.pack_dir, top)
-        result: dict = {"fitted": {}, "named": []}
-        try:
+        result: dict = {"fitted": {}, "named": [], "watered": {}}
+        try:  # the masks first: a water photo is made from its land and its mask
             result = self._run_ops(
-                [("fit", self.top_of(n), str(textures / n), levels[n]) for n in claimed]
+                [("file", str(mask), str(textures / mask.name)) for mask in masks.values()]
+                + [("fit", self.top_of(n), str(textures / n), levels[n]) for n in claimed]
                 + [("check", self.top_of(n), str(textures / n)) for n in building]
+                + [
+                    (
+                        "water",
+                        water_top(self.top_of(n)),
+                        str(textures / water_name(n)),
+                        str(textures / n),
+                        levels.get(n),  # None: being built, its water photo made with it
+                    )
+                    for n in masks
+                ]
             )
         finally:
             with self.lock:  # the levels said before the builder may take one: it reads them
@@ -940,7 +1133,24 @@ class Names:
                     self.refit(name, level)
                 for name in result["named"]:
                     self.forget(name)  # recorded as built, its file was gone: built again
+                for name, level in result["watered"].items():
+                    self.watered(name, level)
                 self.fitting.difference_update(claimed)
+        self._said_missing(result["missing"])
+        if result["water_errors"]:
+            name, why = result["water_errors"][0]
+            self._say_once(
+                f"  water photos not made from their land, {name}'s first ({why}): their water "
+                "shows X-Plane's alone until built again (said once)"
+            )
+        if result["filled"]:
+            from . import writes
+            from .evict import water_bytes
+
+            written = sum(
+                water_bytes(result["watered"][n], self.top_of(n)) for n in result["filled"]
+            )
+            writes.add("water photos made from their land", written, len(result["filled"]))
         if result["errors"]:
             raise SquareError(result["errors"])
         if result["stale"]:
@@ -953,21 +1163,20 @@ class Names:
         for entry in entries:
             source = self.sources[entry[5]] if self.sources else None
             if source is not None:
-                named = own_mesh(source)
+                named = own[entry[5]]
                 land = entry[0][: -len(".dds")] + ".ter"
-                for folder, file in self._files(entry):
+                for folder, file in self._files(entry, named):
                     src, dst = str(source / folder / file), str(self.pack_dir / folder / file)
                     lit = night_name(entry[0]) if file == land else None
                     if named and file.endswith(".ter"):
-                        ops.append(("make", src, dst, self.decal, lit, self.night))
+                        water = self._water_ter(file, entry[0], entry[0] in masks)
+                        ops.append(("make", src, dst, self.decal, lit, self.night, water))
                     elif (self.decal is not None or self.night) and file.endswith(".ter"):
                         ops.append(("ter", src, dst, self.decal, lit, self.night))
                     else:
                         ops.append(("file", src, dst))
         placed = self._run_ops(ops)
-        for src in placed["missing"]:
-            region = Path(src).parent.parent.name
-            self._say_once(f"  {Path(src).name} is gone from {region}: the region changed")
+        self._said_missing(placed["missing"])
         if placed["unlit"]:  # made all the same: a square held for its lights held the start
             self._say_once(
                 f"  square {square[0]:+03d}{square[1]:+04d} has no lights at night where its night "
@@ -976,20 +1185,46 @@ class Names:
             )
         if placed["errors"]:
             raise SquareError(placed["errors"])
-        return placed["placed"], len(result["named"])
+        return placed["placed"] + result["placed"], len(result["named"])
+
+    def _said_missing(self, missing: list[str]) -> None:
+        """The files gone from their region since it was listed, said once each."""
+        for src in missing:
+            path = Path(src)
+            region = path.parents[2] if path.parent.parent.name == "rivers" else path.parents[1]
+            self._say_once(f"  {path.name} is gone from {region.name}: the region changed")
 
     def take_away(self, square: Square) -> int:
         """``square``'s files removed, those of a texture on a square still made kept, and every
         texture the streamer holds. Returns how many. Raises :class:`SquareError`."""
         with self._cond:
             held = (self.done | self.present | self.target) - {square}
+        from .waterphoto import water_name
+
         ops: list[tuple] = []
         names = []
+        own = self._own()
+        textures = self.pack_dir / "textures"
         for entry in self.textures_on(square):
             name = entry[0]
             if tiles_of(parse_texture_name(name)) & held:
                 continue
-            ops += [("drop", str(self.pack_dir / f / file)) for f, file in self._files(entry)]
+            files = self._files(entry, own[entry[5]] if self.sources else False)
+            ops += [("drop", str(self.pack_dir / f / file)) for f, file in files]
+            if (
+                self.water is not None
+                and self.sources
+                and own[entry[5]]
+                and entry[4] & (WATER | SEA)
+            ):
+                # with its mask, while it holds no photo: one made stays with its texture
+                ops.append(
+                    (
+                        "drop_water",
+                        str(textures / water_name(name)),
+                        str(textures / mask_name(name)),
+                    )
+                )
             names.append(name)
         with self.lock:  # decided under the streamer's lock: nothing it builds or holds goes
             ops += [
@@ -1042,7 +1277,7 @@ class Names:
             st = os.stat(self.pack_dir / "textures" / name)
         except OSError:
             return False
-        return (st.st_dev, st.st_ino) in _neutral_inodes(self.pack_dir)
+        return (st.st_dev, st.st_ino) in _inodes(self.pack_dir, NEUTRAL)
 
     # --- the thread ---------------------------------------------------------------------------
 
@@ -1060,24 +1295,27 @@ class Names:
             self.target, self.keep, self.center = set(target), set(keep) | set(target), center
             self._cond.notify_all()
 
-    def ready(self, squares: Iterable[Square]) -> bool:
-        """Whether every file of ``squares`` is made; a square failing for :data:`GIVE_UP_S`
-        counts as made, so that X-Plane is not held for ever (the log says so, once)."""
+    def left(self, squares: Iterable[Square]) -> int:
+        """How many of ``squares`` have files not made yet: what a start waits for, which the
+        plugin's loading window counts down. A square failing for :data:`GIVE_UP_S` counts as
+        made, so that X-Plane is not held for ever (the log says so, once)."""
         now = time.monotonic()
+        left = 0
         with self._cond:
             for square in squares:
                 if square in self.done:
                     continue
                 failing = self.failing.get(square)
                 if failing is None or now - failing[0] < GIVE_UP_S:
-                    return False
+                    left += 1
+                    continue
                 if square not in self._given_up:
                     self._given_up.add(square)
                     self.log(
                         f"  X-Plane goes on without the files of square {square[0]:+03d}"
                         f"{square[1]:+04d}: they could not all be made ({failing[3]})"
                     )
-            return True
+        return left
 
     def wait_ready(self, squares: Iterable[Square], timeout: float) -> bool:
         wanted = set(squares)

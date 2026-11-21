@@ -27,7 +27,7 @@ from orthostudio.live.names import (
     squares_round,
 )
 from orthostudio.live.region import neutral_file, setup_region, sources_of_pack
-from orthostudio.live.streamer import Fix, Streamer
+from orthostudio.live.streamer import Arrival, Fix, Streamer, start_count
 
 # ZL16 textures in a row eastwards from NAMES[0]: ROW[10] lies on the squares (46, 2) and (46, 3)
 ROW = tuple(f"23296_{33152 + 16 * k}_BI16" for k in range(12))
@@ -246,7 +246,7 @@ def test_a_file_that_fails_is_tried_again_and_stops_nothing(
     try:
         names.want({HERE, EAST}, {HERE, EAST}, (46.5, 2.5))
         assert names.wait_ready({EAST}, 10.0)  # the other square made all the same
-        assert not names.ready({HERE}) and HERE in names.failing
+        assert names.left({HERE}) == 1 and HERE in names.failing
         assert any("could not all be made" in line for line in logged)
         assert (pack / "textures" / f"{ROW[4]}.dds").exists()  # its other files are there
         broken["on"] = False  # the disk has room again
@@ -259,16 +259,20 @@ def test_a_file_that_fails_is_tried_again_and_stops_nothing(
 def test_a_start_is_not_held_for_ever_by_a_failing_square(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The squares a start waits for, counted (sq=): a square made, or failing
+    past GIVE_UP_S, counts as made, the log saying so once."""
     from orthostudio.live import names as names_module
 
     pack = region(tmp_path)
     logged: list[str] = []
     names = live_names(pack, log=logged.append)
     names.failing[HERE] = [time.monotonic() - 1.0, time.monotonic() + 60, 1, "EPERM"]
-    assert not names.ready({HERE})
-    monkeypatch.setattr(names_module, "GIVE_UP_S", 0.5)
-    assert names.ready({HERE})
-    assert names.ready({HERE})
+    assert names.left({HERE, EAST}) == 2
+    names.done.add(EAST)
+    assert names.left({HERE, EAST}) == 1
+    monkeypatch.setattr(names_module, "GIVE_UP_S", 0.5)  # HERE failing past it
+    assert names.left({HERE, EAST}) == 0
+    assert names.left({HERE, EAST}) == 0
     assert sum("X-Plane goes on without the files" in line for line in logged) == 1
 
 
@@ -525,11 +529,19 @@ def test_where_x_plane_says_it_loads_is_made_too(tmp_path: Path) -> None:
 def test_a_start_is_ready_once_its_squares_are_made(tmp_path: Path) -> None:
     s = streamer(tmp_path)
     s.plan(Fix(46.5, 2.5), x_plane_there=False, starting=True)
-    assert not s.squares_ready(46.5, 2.5)  # the plugin holds X-Plane meanwhile
+    window = squares_round([(46.5, 2.5)], 0)
+    assert s.squares_left((46.5, 2.5)) == len(window)  # the plugin holds X-Plane meanwhile
+    # the start's one count, which the plugin, the pause window and Live's window show: where
+    # X-Plane says it loads the flight counted too, each square once
+    start = Arrival(46.5, 2.5, "LFLX", "click", 0.0)
+    assert start_count(s, start, 0.0, fresh=True)["squares"] == len(window)
+    start.held_at = (46.5, 3.5)
+    both = squares_round([(46.5, 2.5), (46.5, 3.5)], 0)
+    assert len(window) < start_count(s, start, 0.0, fresh=True)["squares"] == len(both)
     s.names.start()
     try:
-        assert s.names.wait_ready(squares_round([(46.5, 2.5)], 0), 10.0)
-        assert s.squares_ready(46.5, 2.5)
+        assert s.names.wait_ready(window, 10.0)
+        assert s.squares_left((46.5, 2.5)) == 0
         assert (s.pack_dir / "terrain" / f"{ROW[0]}.ter").exists()
     finally:
         s.names.close()
@@ -570,8 +582,8 @@ TER_SEA = (
 
 
 def test_a_land_terrain_file_takes_the_decal_live_chooses() -> None:
-    """The DECAL_LIB line names the decal of Live's settings, or goes with none; the sea's file,
-    which has no such line, is left as it is (decals on the land only)."""
+    """The DECAL_LIB line names the decal of Live's settings, or goes with none; a water file with
+    no such line is left as it is unless it lays the photo on the sea (the next test)."""
     from orthostudio.live.names import with_decal
 
     out = with_decal(TER_LAND, "grass_and_stony_dirt_1.dcl")
@@ -581,6 +593,79 @@ def test_a_land_terrain_file_takes_the_decal_live_chooses() -> None:
     assert b"DECAL_LIB" not in with_decal(TER_LAND, "")
     assert with_decal(TER_LAND, "").count(b"\n") == TER_LAND.count(b"\n") - 1
     assert with_decal(TER_SEA, "grass_and_stony_dirt_1.dcl") == TER_SEA
+
+
+TER_SEA_MASKED = (
+    b"A\n800\nTERRAIN\n\nLOAD_CENTER 49.63918 -125.11230 6336 4096\n"
+    b"BASE_TEX_NOWRAP ../textures/22320_9984_BI16.dds\n"
+    b"LOAD_CENTER_BORDER 49.63918 -125.11230 6336 1024\n"
+    b"BORDER_TEX ../textures/22320_9984_ZL16.png\nWET\nNO_SHADOW\n"
+)
+
+
+def test_the_photo_laid_on_the_sea_takes_the_decal_too() -> None:
+    """The sea's photo file (``on_water``) gets the DECAL_LIB line before WET, where Build's pack
+    puts it, so that the grain goes on with the photo past the shore; none chosen leaves it as it
+    is, and the water's overlays without a mask never get one."""
+    from orthostudio.live.names import with_decal
+
+    out = with_decal(TER_SEA_MASKED, "maquify_2_green_key.dcl", on_water=True)
+    assert out == TER_SEA_MASKED.replace(
+        b"WET\n", b"DECAL_LIB lib/g10/decals/maquify_2_green_key.dcl\nWET\n"
+    )
+    assert with_decal(out, "grass_and_stony_dirt_1.dcl", on_water=True).count(b"DECAL_LIB") == 1
+    assert with_decal(TER_SEA_MASKED, "", on_water=True) == TER_SEA_MASKED
+    assert with_decal(out, "", on_water=True) == TER_SEA_MASKED
+    assert with_decal(TER_SEA, "maquify_2_green_key.dcl") == TER_SEA
+
+
+def test_live_s_own_sea_files_are_made_with_the_decal(tmp_path: Path) -> None:
+    """A ("make", ...) operation gives the sea's photo file of Live's own mesh the decal, the
+    water's overlay without a mask none, the land its own."""
+    from orthostudio.live.names import run_ops
+
+    terrain = tmp_path / "terrain"
+    terrain.mkdir()
+    names = (
+        "22320_9984_BI16.ter",
+        "22320_9984_BI16_sea_overlay.ter",
+        "22320_9984_BI16_water_overlay.ter",
+    )
+    ops = [("make", "", str(terrain / n), "grass_and_stony_dirt_1.dcl") for n in names]
+    result = run_ops(str(tmp_path), ops)
+    assert not result["errors"]
+    land, sea, water = ((terrain / n).read_bytes() for n in names)
+    assert b"DECAL_LIB lib/g10/decals/grass_and_stony_dirt_1.dcl\nNO_ALPHA" in land
+    assert b"DECAL_LIB lib/g10/decals/grass_and_stony_dirt_1.dcl\nWET" in sea
+    assert b"DECAL_LIB" not in water
+
+
+def test_the_water_photo_takes_the_decal_and_the_even_border_none(tmp_path: Path) -> None:
+    """Every terrain file naming Live's water photo takes the decal, the sea's and a river's with
+    soft banks alike, so that the grain goes on past the bank (XC00DD, 2026-11-18); a river kept
+    even lays the photo over all its water through one grey and takes none, nor one whose water
+    shows X-Plane's alone."""
+    from orthostudio.live.names import run_ops
+    from orthostudio.live.waterphoto import EVEN_BORDER, NO_BORDER
+
+    terrain = tmp_path / "terrain"
+    terrain.mkdir()
+    photo = ("photo", "22320_9984_BI16_water.dds", 2048)
+    cases = {
+        "22320_9984_BI16_sea_overlay.ter": photo,
+        "22320_10000_BI16_water_overlay.ter": photo,
+        "22320_10016_BI16_water_overlay.ter": ("border", EVEN_BORDER),
+        "22320_10032_BI16_water_overlay.ter": ("border", NO_BORDER),
+    }
+    decal = "maquify_2_green_key.dcl"
+    ops = [("make", "", str(terrain / n), decal, None, False, w) for n, w in cases.items()]
+    assert not run_ops(str(tmp_path), ops)["errors"]
+    sea, soft, even, alone = ((terrain / n).read_bytes() for n in cases)
+    for text in (sea, soft):
+        assert b"BASE_TEX_NOWRAP ../textures/22320_9984_BI16_water.dds" in text
+        assert b"DECAL_LIB lib/g10/decals/maquify_2_green_key.dcl\nWET" in text
+    for text in (even, alone):
+        assert b"BORDER_TEX" in text and b"DECAL_LIB" not in text
 
 
 def test_a_square_s_terrain_files_are_written_with_the_decal(tmp_path: Path) -> None:
@@ -654,7 +739,10 @@ def test_a_region_that_names_its_terrain_files(tmp_path: Path) -> None:
     )
     assert done["placed"] == 2 and not done["errors"]
     assert b"DECAL_LIB lib/g10/decals/grass_and_stony_dirt_1.dcl\n" in land.read_bytes()
-    assert sea.read_bytes() == made_ter(sea.name)  # the sea takes no decal
+    # the sea's photo takes the decal too, before WET (2026-11-16)
+    assert sea.read_bytes() == made_ter(sea.name).replace(
+        b"WET\n", b"DECAL_LIB lib/g10/decals/grass_and_stony_dirt_1.dcl\nWET\n"
+    )
 
 
 def _live_region(root: Path, region: str, ters: str) -> Path:

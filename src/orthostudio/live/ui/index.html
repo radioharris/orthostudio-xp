@@ -270,8 +270,23 @@
         <ul class="regions" id="regions-ours"></ul>
         <p class="question-help" id="regions-loading" data-i18n="regions.loading" hidden>Asking for the list…</p>
         <p class="question-help is-warn" id="regions-error" hidden></p>
+        <p class="question-help" id="regions-why" hidden></p>
         <p class="question-help" id="regions-ours-none" data-i18n="regions.ours_none" hidden></p>
         <p class="question-help" id="regions-where" hidden></p>
+        <!-- which mesh a start streams onto, for every region at once: shown only once a region
+             keeps its old one (LiveSettings.mesh, scenery.osxp_sources) -->
+        <fieldset class="sub-question" id="mesh-choice" hidden>
+          <legend class="sub-question-title" data-i18n="mesh.title">Mesh</legend>
+          <div class="choices">
+            <label class="choice"><input type="radio" name="mesh" value="new">
+              <span class="choice-text"><span class="choice-label" data-i18n="mesh.new">New</span>
+                <span class="choice-note" data-i18n="mesh.new_note"></span></span></label>
+            <label class="choice"><input type="radio" name="mesh" value="old">
+              <span class="choice-text"><span class="choice-label" data-i18n="mesh.old">Old</span>
+                <span class="choice-note" data-i18n="mesh.old_note"></span></span></label>
+          </div>
+          <p class="question-help" data-i18n="mesh.restart"></p>
+        </fieldset>
         <p class="question-help" data-i18n="regions.ours_source"></p>
         <div class="sub-question">
           <label class="sub-question-title" for="set-other-mesh" data-i18n="other_mesh.title">Another tool's mesh</label>
@@ -401,6 +416,23 @@
         </div>
       </fieldset>
 
+      <!-- how the photo meets rivers and lakes (orthostudio.live.waterphoto): the sea always fades -->
+      <fieldset class="question" id="q-rivers">
+        <legend class="question-title" data-i18n="rivers.title">Rivers and lakes</legend>
+        <p class="question-help" data-i18n="rivers.help"></p>
+        <div class="choices choices-side">
+          <label class="choice"><input type="radio" name="rivers_fade" value="even">
+            <span class="choice-text"><span class="choice-label" data-i18n="rivers.even">Even (recommended)</span>
+              <span class="choice-note" data-i18n="rivers.even_note"></span>
+              <img class="choice-shot" src="live/images/rivers-even.jpg" alt="" width="240" height="152"></span></label>
+          <label class="choice"><input type="radio" name="rivers_fade" value="soft">
+            <span class="choice-text"><span class="choice-label" data-i18n="rivers.soft">Soft banks</span>
+              <span class="choice-note" id="rivers-soft-note" data-i18n="rivers.soft_note"></span>
+              <img class="choice-shot" src="live/images/rivers-soft.jpg" alt="" width="240" height="152"></span></label>
+        </div>
+        <p class="question-help" data-i18n="rivers.new_mesh"></p>
+      </fieldset>
+
       <fieldset class="question" id="q-decal">
         <legend class="question-title" data-i18n="decal.title">Ground grain up close (decals)</legend>
         <p class="question-help" data-i18n="decal.help"></p>
@@ -490,6 +522,19 @@
     <div class="dialog-actions">
       <button type="submit" class="btn" value="wait" autofocus data-i18n="building.wait">Not now</button>
       <button type="submit" class="btn btn-primary" value="go" data-i18n="building.go">Go on anyway</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- A region's questions (live.js askRegion): keep the mesh of before at an update, no room for
+     it beside the region, the kept mesh's deletion. The first button, focused, the careful one. -->
+<dialog id="region-ask" class="dialog" role="alertdialog" aria-labelledby="region-ask-title" aria-describedby="region-ask-text">
+  <form method="dialog">
+    <h2 class="dialog-title" id="region-ask-title"></h2>
+    <div class="dialog-text" id="region-ask-text"></div>
+    <div class="dialog-actions">
+      <button type="submit" class="btn" value="no" id="region-ask-no" autofocus></button>
+      <button type="submit" class="btn" value="yes" id="region-ask-yes"></button>
     </div>
   </form>
 </dialog>

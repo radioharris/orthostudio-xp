@@ -115,6 +115,12 @@ class LiveSettings(BaseModel):
     (:func:`orthostudio.live.scenery.other_mesh`); empty: none. A setting, not a look into the
     other tool's own files, which may change under Live (the user, 2026-11-14: « je préfère le
     réglage sans surprise »)."""
+    mesh: Literal["new", "old"] = "new"
+    """Which mesh of Live's own regions a start streams onto, for all of them at once: "new", each
+    region installed; "old", each region's kept old mesh where it has one, the new one elsewhere
+    (:func:`orthostudio.live.scenery.osxp_sources`). Shown in the window only once a region keeps
+    its old mesh (``osxpregions.kept_dir``); taken at the next start with X-Plane not running, as
+    every change of the mesh (``session.prepare``)."""
     app_home: Literal["ask", "live", "build"] = "ask"
     """What the app opens at its start (orthostudio.live.app_start): the question the first time,
     then Live's window or OrthoStudio XP's, as chosen."""
@@ -151,6 +157,16 @@ class LiveSettings(BaseModel):
     night_light: Literal["soft", "normal", "strong"] = "normal"
     """How bright those lights are (:data:`orthostudio.live.night.LIGHTS`), the window's one
     question with ``night``: at the next start, each night texture made again as night comes."""
+    rivers_fade: bool = False
+    """How the photo meets the water of rivers and lakes on Live's squares
+    (:mod:`orthostudio.live.waterphoto`): off, evenly see-through, one grey border for all of
+    them, as XPME and AutoOrtho draw them; on, faded into the water near their banks as on the
+    sea, through each one's mask, with a water photo of its own. The sea and lakes over 200 km²
+    keep their masks either way. Off by default (the user, 2026-11-17): soft banks take more
+    graphics memory where there is much water, X-Plane +0.7 GB against off at Stockholm on the
+    new mesh. Only regions of the new mesh, whose rivers and lakes have
+    terrain files of their own, tell the two apart; a change takes effect at the next start with
+    X-Plane not running, as the decal's."""
     decal: str = LIVE_DECAL
     """X-Plane 12's decal on the land of Live's squares, one of OrthoStudio XP's
     (:data:`orthostudio.decals.DECALS`): the fine ground detail drawn over the photo near the

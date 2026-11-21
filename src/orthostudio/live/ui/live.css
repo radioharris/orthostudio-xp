@@ -97,19 +97,24 @@
 .topbar-tools .live-osxp { width: auto; padding: 0 8px; white-space: nowrap; }
 
 /* AutoOrtho's regions, the mesh Live installs */
-/* one grid for the list, its rows on it (subgrid): every size starts where the longest name ends */
+/* one grid for the list, its rows on it (subgrid): each region's name, size and state in the
+   room the buttons leave, wrapping there (French's longer states took the names' room) */
 .regions { list-style: none; margin: var(--gap) 0 var(--gap); padding: 0; display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto; column-gap: 12px; row-gap: 8px; }
+  grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 8px; }
 .region { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; }
 .region-head { display: contents; }
 
 .region > :not(.region-head) { grid-column: 1 / -1; }
 .region-name { font-weight: 600; }
 .region-label { display: flex; flex-direction: column; min-width: 0; }
-.region-size { color: var(--fg-2); font-size: var(--fs-2); font-variant-numeric: tabular-nums; }
+.region-size { color: var(--fg-2); font-size: var(--fs-2); font-variant-numeric: tabular-nums;
+  white-space: nowrap; }
 .region-state { color: var(--fg-2); font-size: var(--fs-2); }
 .region-actions { display: flex; gap: 6px; justify-self: end; }
 .region-progress { font-variant-numeric: tabular-nums; }
+/* a region's kept old mesh, under its row: its size and its own Delete */
+.region-kept { display: flex; align-items: center; gap: 12px; color: var(--fg-2); font-size: var(--fs-2); }
+.region-kept .region-actions { margin-left: auto; }
 
 /* The map: the shared base map (basemap.js), Live's layers over it (livemap.js) */
 .live-map-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -179,3 +184,11 @@
 
 /* the foot holds OrthoStudio XP's text size and zoom alone: on its right, as in its page */
 .live-statusbar { justify-content: flex-end; }
+
+/* two choices side by side, each with its picture under it; one under the other when narrow */
+.choices-side { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+.choices-side .choice-text { align-self: stretch; }  /* the pictures level at the foot */
+.choices-side .choice-note { margin-bottom: 6px; }
+.choices-side .choice-shot { margin-top: auto; }
+.choice-shot { display: block; width: 240px; max-width: 100%; height: auto; margin-top: 6px;
+  border-radius: var(--radius); }

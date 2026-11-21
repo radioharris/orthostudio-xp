@@ -21,6 +21,7 @@ The states:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -28,7 +29,7 @@ import threading
 import time
 import traceback
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -40,11 +41,10 @@ from orthostudio.live.evict import usage
 from orthostudio.live.meshmap import REGION_NAMES, squares_of
 from orthostudio.live.pack import (
     LINK_NAME,
-    FolderError,
-    check_folder,
     copies_in,
     default_live_root,
     default_pack_dir,
+    folder_problem,
     live_root,
     load_built,
 )
@@ -102,6 +102,9 @@ def resolve_departure(text: str) -> tuple[float, float]:
 
 LEAVE_HINT = "Leave it installed, in the window, to stop waiting"
 STOP_HINT = "Stop in the window to end"
+INSTALLING = (
+    "a region is being downloaded or installed: Start once it is done, or stop it in Settings"
+)
 
 
 SOURCE_ENV = "OSXP_LIVE_SOURCE"
@@ -137,6 +140,7 @@ def options_for(settings: LiveSettings) -> session.Options:
         own_tiles=settings.own_tiles,
         night=settings.night,
         night_light=settings.night_light,
+        rivers_fade=settings.rivers_fade,
     )
 
 
@@ -196,12 +200,14 @@ def _same_folder(one: str, other: str | None) -> bool:
 
 def _textures_bytes(pack: Path) -> int:
     """The disk of the textures built, Live stopped: as the streamer counts it, from its record
-    (evict.usage), the night textures and the 8192 px copies with them; without them the figure
-    fell by nearly half on Windows as Live stopped (the review of 2026-11-11)."""
+    (evict.usage), the night textures, the 8192 px copies and the water photos with them; without
+    them the figure fell by nearly half on Windows as Live stopped (the review of 2026-11-11)."""
     meta = load_built(pack)
     lit = meta.get("lit")
     lit = lit if isinstance(lit, dict) and night_on(pack) else {}  # lights off: their files gone
-    return usage(meta.get("textures", {}), file_tops(pack), lit, copies_in(meta))
+    water = meta.get("water")
+    water = water if isinstance(water, dict) else {}
+    return usage(meta.get("textures", {}), file_tops(pack), lit, copies_in(meta), water)
 
 
 def gather_checks() -> dict[str, Any]:
@@ -240,11 +246,9 @@ def gather_checks() -> dict[str, Any]:
     except session.RefusedError as e:
         out["xplane_problem"] = str(e)
         out["other_mesh"] = _other_mesh_said(None)
+        out["folder_problem"] = folder_problem(live_root(), None)
         return out
-    try:
-        check_folder(live_root(), custom_scenery=xp / "Custom Scenery")
-    except FolderError as e:
-        out["folder_problem"] = str(e)
+    out["folder_problem"] = folder_problem(live_root(), xp)
     sources = stream_sources(xp)
     out["other_mesh"] = _other_mesh_said(xp)
     out.update(
@@ -252,9 +256,15 @@ def gather_checks() -> dict[str, Any]:
         xplane_quality=xplane_texture_quality(xp),
         # the regions installed, by name, or where they would be
         mesh=", ".join(s.name for s in sources) if sources else str(autoortho_scenery(xp)),
-        # by region, Live's and AutoOrtho's ("eur"); another tool's by its folder's name
-        # once each: Live's Europe and AutoOrtho's both said "Europe, Europe"
-        mesh_regions=list(dict.fromkeys(re.sub(r"^z_(?:ao|osxp)_", "", s.name) for s in sources)),
+        # by region, Live's and AutoOrtho's ("eur"), a region's kept old mesh as its region;
+        # another tool's by its folder's name; once each: Live's Europe and AutoOrtho's both said
+        # "Europe, Europe"
+        mesh_regions=list(
+            dict.fromkeys(
+                osxpregions.kept_region(live_root(), s) or re.sub(r"^z_(?:ao|osxp)_", "", s.name)
+                for s in sources
+            )
+        ),
         mesh_found=bool(sources),
         region_ready=session.region_ready(default_pack_dir(), sources),
         autoortho_mounted=autoortho_mounted(xp),
@@ -289,21 +299,32 @@ def our_regions(root: Path) -> list[dict[str, Any]]:
     at the install: counting millions of small files at every status would take minutes."""
     out = []
     for folder in osxp_regions(root):
-        try:
-            marker = json.loads((folder / aoregions.MARKER).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            marker = {}
-        size = marker.get("size") if isinstance(marker, dict) else None
         out.append(
             {
                 "id": folder.name.removeprefix("z_osxp_"),
-                "size": size if isinstance(size, int) else None,
+                "size": _size_of(folder),
                 "elsewhere": folder.is_symlink(),
                 # where it really is: the folder holding it, the link's target's for one elsewhere
                 "folder": str(folder.resolve().parent),
             }
         )
     return out
+
+
+def _takes(settings: LiveSettings) -> tuple[bool, bool]:
+    """What an install of a region takes as the Settings say: its overlays (X-Plane's roads,
+    forests and buildings), and its river masks (soft banks)."""
+    return settings.overlays != "off", settings.rivers_fade
+
+
+def _size_of(folder: Path) -> int | None:
+    """A region's size on the disk as its marker holds it, a kept old mesh's too; None without."""
+    try:
+        marker = json.loads((folder / aoregions.MARKER).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    size = marker.get("size") if isinstance(marker, dict) else None
+    return size if isinstance(size, int) else None
 
 
 class LiveControl:
@@ -372,6 +393,10 @@ class LiveControl:
         # the pilot's own install goes first (:meth:`_fetch_night_grids`)
         self._quiet = False
         self._night_thread: threading.Thread | None = None
+        # the river masks soft banks brings, region after region, in the installs' one place and
+        # seen on the page (:meth:`rivers_chosen`); its Stop ends the whole round
+        self._rivers_thread: threading.Thread | None = None
+        self._rivers_stop = threading.Event()
         # the window's "Prepare": a departure for the running stream, and SimBrief's suggestion
         self._resolve = resolve
         self._simbrief = simbrief
@@ -401,15 +426,20 @@ class LiveControl:
         self._echo(text)
 
     def keep_region_lists_aside(self) -> threading.Thread:
-        """Each region read into its list in the background, where that list is missing or old
-        (``session.keep_region_lists``): the window does it as it opens, so that its Start or
-        Prepare reads lists only, or waits for the one being made."""
+        """As the window opens, in the background: the deletions of regions or stages a quit
+        stopped taken up (``osxpregions.take_up_deletions``, once, before anything else), what a
+        stop of an install left made right (``osxpregions.settle``, no update put in place here),
+        then each region read into its list where that list is missing or old
+        (``session.keep_region_lists``), so that Start or Prepare reads lists only, or waits for
+        the one being made."""
 
         def run() -> None:
             try:
-                xp = session.xplane_dir(None)
-            except session.RefusedError:
-                xp = None
+                osxpregions.take_up_deletions(live_root())
+                osxpregions.settle(live_root(), self.log, swap=False)
+            except Exception as e:
+                self.log(f"Live's regions could not be checked: {e}")
+            xp = session.xplane_or_none()
             try:
                 session.keep_region_lists(xp, self.log)
             except Exception as e:  # a start lists what is left
@@ -441,7 +471,8 @@ class LiveControl:
             "log_seq": seq,
             "log_file": None if self.log_file is None else str(self.log_file),
             "platform": platform_name(),  # mac, win or lin: what the file manager is called
-            "checks": self.checks(),
+            # what keeps Start back, an install of a region too (:meth:`start`)
+            "checks": {**self.checks(), "installing": self.installing()},
             "settings": self._settings().model_dump(),
             "decals": list(DECALS),
             "regions": self.regions(),
@@ -468,10 +499,16 @@ class LiveControl:
     def start(self, *, departure: str | None = None) -> bool:
         """Start streaming, building round ``departure`` straight away where given (an airport's
         ICAO code, as ``--from``); False when a stream is already on its way (or on its way
-        out)."""
+        out). Refused (:class:`session.RefusedError`) while a region is being downloaded or
+        installed (:meth:`installing`): the start would read a region an install is changing."""
         with self._lock:
             if self._state != IDLE:
                 return False
+            if self._installing():
+                raise session.RefusedError(INSTALLING)
+            thread = self._install_thread
+            if thread is None or not thread.is_alive():  # an install over ends with this start,
+                self._installer = None  # and the line of one failed or stopped with it
             self._state, self._error, self._report = STARTING, None, None
             self._stop.clear()
             self._leave.clear()
@@ -503,8 +540,11 @@ class LiveControl:
             if state == STREAMING:
                 self._departure = (lat, lon, text)
                 return lat, lon
-        if state == IDLE and self.start(departure=text):
-            return lat, lon
+        try:
+            if state == IDLE and self.start(departure=text):
+                return lat, lon
+        except session.RefusedError as e:  # a region being installed
+            return Refusal("busy", str(e))
         return Refusal("busy", "Live is starting or stopping: prepare it in a moment")
 
     def _take_departure(self) -> tuple[float, float, str] | None:
@@ -560,13 +600,23 @@ class LiveControl:
         """Whether a stream is on its way, in or out, or a region is being installed: the app,
         started from its icon, does not let Live's process go then (``orthostudio.live.web``)."""
         with self._lock:
-            thread = self._install_thread
-            # the night grids' own download is unseen: it never holds the app (an install starts
-            # again where it stopped)
-            installing = (
-                thread is not None and thread.is_alive() and thread is not self._night_thread
-            )
-            return self._state != IDLE or installing
+            return self._state != IDLE or self._installing()
+
+    def installing(self) -> bool:
+        """Whether a region is being downloaded or installed, its river masks too: Start waits for
+        it. The night grids' own download is unseen: it never holds the app nor a start (an
+        install starts again where it stopped)."""
+        with self._lock:
+            return self._installing()
+
+    def _installing(self) -> bool:
+        thread = self._install_thread  # the lock held
+        return thread is not None and thread.is_alive() and thread is not self._night_thread
+
+    def _may_swap(self) -> bool:
+        """Whether a region installed already may take its new version now: Live stopped and
+        X-Plane not running, which may be reading it (``osxpregions.Installer``)."""
+        return self._state == IDLE and not xplane_running()
 
     def quit(self, *, force: bool = False) -> bool:
         """The app is being updated or removed (the Windows installer, ``stop_running.pas``): stop,
@@ -789,7 +839,7 @@ class LiveControl:
     def _night_grids(self, root: Path, regions: list) -> None:
         for region in regions:
             installer = self._installer_of(
-                root, region, overlays=False, log=self.log, night_only=True
+                root, region, overlays=False, log=self.log, night_only=True, may_swap=self._may_swap
             )
             with self._lock:
                 if not self._quiet:  # the pilot's install took over
@@ -816,9 +866,16 @@ class LiveControl:
     def regions(self, *, fetch: bool = False) -> dict[str, Any]:
         """OrthoStudio XP's regions as the page lists them: those installed (:func:`our_regions`,
         their size on the disk and where), then every region of the host's list with what it
-        downloads (the overlays only when the pilot takes them), whether it is installed and how
-        many of its zips changed since; the install under way. With ``fetch`` (the page's own
-        request, not its status), the host's list is read again in the background when old."""
+        downloads (``osxpregions.wanted``: its river masks only with soft banks or once it has
+        them; the overlays only when the pilot takes them), whether it is installed, how many of
+        its zips an update brings (the region whole once its mesh changed) and what it downloads,
+        whether its update waits whole for Live's next start (``waiting``) and why the last start
+        that tried did not put it in place (``held``), and what soft banks would download for it
+        (``rivers_bytes``: its river masks it has not, the Settings' question sums them), whether
+        its update replaces its mesh (``whole``: the window asks the room it lacks,
+        :meth:`update_room`, and whether to keep the one of before), and its kept old mesh
+        (``kept``: its size); the install under way. With ``fetch`` (the page's own request, not
+        its status), the host's list is read again in the background when old."""
         with self._lock:
             reading = self._catalog_thread is not None and self._catalog_thread.is_alive()
             stale = time.monotonic() - self._catalog_at > CATALOG_S
@@ -831,24 +888,41 @@ class LiveControl:
             installer = None if self._quiet else self._installer
         root = live_root()
         mine = osxpregions.installed(root)
-        overlays = self._settings().overlays != "off"
+        settings = self._settings()
+        overlays, rivers = _takes(settings)
         listed = []
         for region_id in REGION_NAMES:
             region = (catalog or {}).get(region_id)
             if region is None and region_id not in mine:
                 continue
             item: dict[str, Any] = {"id": region_id, "installed": region_id in mine}
+            # the disk's word, whether the list came or not
+            item["waiting"] = region_id in mine and osxpregions.staged_whole(root, region_id)
+            item["held"] = osxpregions.held(root, region_id)
+            kept = osxpregions.kept_mesh(root, region_id) if region_id in mine else None
+            if kept is not None:
+                item["kept"] = {"size": _size_of(kept)}
             if region is not None:
-                mesh, ovl = osxpregions.to_fetch(root, region, overlays)
+                installed = region_id in mine
+                mesh, ovl = osxpregions.to_fetch(root, region, overlays, rivers)
                 mesh = [z for z in mesh if z not in region.night]  # those come by themselves
-                item["download"] = region.mesh_size + (
-                    sum(z.size for z in region.overlays) if overlays else 0
+                want = osxpregions.wanted(root, region, rivers) + (
+                    region.overlays if overlays else ()
                 )
-                item["unpacked"] = region.unpacked + (
-                    sum(z.unpacked for z in region.overlays) if overlays else 0
-                )
-                item["changed"] = len(mesh) + len(ovl) if region_id in mine else 0
+                item["download"] = sum(z.size for z in want)
+                item["unpacked"] = sum(z.unpacked for z in want)
+                # zips downloaded already but not recorded count too: an update has them to put
+                # in place (a whole stage waiting, river masks whose swap was refused), with nothing
+                # to download, and keeps its Update
+                changed = osxpregions.not_installed(root, region, rivers)
+                changed = [z for z in changed if z not in region.night]
+                item["changed"] = len(changed) + len(ovl) if installed else 0
                 item["changed_bytes"] = sum(z.size for z in (*mesh, *ovl))
+                adds, _ = osxpregions.to_fetch(root, region, False, rivers=True)
+                item["rivers_bytes"] = (
+                    sum(z.size for z in adds if z in region.rivers) if installed else 0
+                )
+                item["whole"] = installed and osxpregions.made_whole(root, region)
             listed.append(item)
         progress = installer.snapshot() if installer is not None else None
         return {
@@ -858,21 +932,54 @@ class LiveControl:
             "install": progress,
         }
 
-    def install_region(self, region_id: str) -> None:
+    def update_room(self, region_id: str) -> dict | None:
+        """The room an update of the region lacks beside it (``osxpregions.update_room``: None where
+        it has room, or where it does not make the region whole), which the window asks as Update
+        is clicked, never at each look (a stale stage is read whole)."""
+        with self._lock:
+            region = (self._catalog or {}).get(region_id)
+        if region is None:
+            return None
+        return osxpregions.update_room(live_root(), region, *_takes(self._settings()))
+
+    def install_region(
+        self, region_id: str, *, keep_old: bool = False, make_room: bool = False
+    ) -> None:
         """Download and install one of OrthoStudio XP's regions into Live's folder, or update one
-        (only its zips that changed), in the background. One at a time; a region new while Live
-        streams is used from the next start, and one installed is not updated then: the pack
-        reads its files."""
-        self._stop_night_grids()
+        (whole, beside the one installed, which it replaces), in the background. One at a time; a
+        region new while Live streams is used from the next start, and one installed is not
+        updated then: the pack reads its files. An update whole while X-Plane runs waits for Live's
+        next start with X-Plane not running (``osxpregions.settle``); Start waits for the install
+        (:meth:`installing`). ``keep_old``: the window's answer, the region of before kept at the
+        swap as the region's old mesh. ``make_room``: the window's « Delete the kept old one and
+        install the new one » where the disk lacks room (``osxpregions.Installer.make_room``),
+        which the install checks again by the window's own rule and only with Live stopped and
+        X-Plane not running, at the moment it deletes; Mesh back to new once no region keeps an
+        old mesh (:meth:`_mesh_follows_kept`)."""
         with self._lock:
             region = (self._catalog or {}).get(region_id)
         if region is None:
             raise session.RefusedError(f"no region {region_id!r} in the list of Live's regions")
+        # never a region on the computer's own disk while the disk of Live's folder is unplugged
+        problem = folder_problem(live_root(), session.xplane_or_none(), create=True)
+        if problem is not None:
+            raise session.RefusedError(f"Live's folder: {problem}")
+        self._stop_night_grids()
         installed = region_id in osxpregions.installed(live_root())
+        overlays, rivers = _takes(self._settings())
         installer = self._installer_of(
-            live_root(), region, overlays=self._settings().overlays != "off", log=self.log
+            live_root(),
+            region,
+            overlays=overlays,
+            log=self.log,
+            rivers=rivers,
+            may_swap=self._may_swap,
+            keep_old=keep_old,
+            make_room=make_room,
         )
-        thread = threading.Thread(target=installer.run, name="live-region-install", daemon=True)
+        thread = threading.Thread(
+            target=self._install, args=(installer,), name="live-region-install", daemon=True
+        )
         # one check and one taking: the night grids' own download, started from the list's read
         # between the two, ran beside it on the same files (the review of 2026-11-11)
         with self._lock:
@@ -880,6 +987,8 @@ class LiveControl:
                 raise session.RefusedError(
                     "the night lights' grids are being downloaded: try again in a moment"
                     if self._install_thread is self._night_thread
+                    else "the river masks are being downloaded: one install at a time"
+                    if self._install_thread is self._rivers_thread
                     else "a region is being installed: one at a time"
                 )
             if self._state != IDLE and installed:
@@ -887,19 +996,94 @@ class LiveControl:
             self._installer, self._install_thread, self._quiet = installer, thread, False
         thread.start()
 
+    def _install(self, installer: Any) -> None:
+        installer.run()
+        self._mesh_follows_kept()  # a kept old mesh deleted to make room
+
     def cancel_install(self) -> None:
+        """The window's Stop: the install under way, and the round of river masks it is part of."""
+        self._rivers_stop.set()
         with self._lock:
             installer = None if self._quiet else self._installer
         if installer is not None:
             installer.cancel()
 
-    def remove_region(self, region_id: str) -> None:
-        """Delete one of OrthoStudio XP's regions from the disk, with its overlays. Not while Live
-        streams, nor while the region is being installed."""
+    def rivers_chosen(self) -> bool:
+        """Soft banks saved in the Settings: the river masks of each region installed whose mesh
+        is the list's, and that has not got them, downloaded alone (``osxpregions.rivers_to_add``),
+        one region after the other, in the installs' one place with its line on the page; a region
+        whose mesh changed shows its update, which brings it whole, rivers in. Downloaded while
+        Live streams too; put in place as a region's update is (``osxpregions.Installer``,
+        :meth:`_may_swap`): at once with Live stopped and X-Plane not running, else whole in their
+        stage until Live's next start with X-Plane not running, whose set-up makes the region's
+        terrain files again for them (``region._fingerprints``). The night grids' own download
+        gives way; an install under way keeps its place, and the regions then show Update. False
+        when nothing started."""
         self._stop_night_grids()
-        # one check and one taking, as an install's: the night grids' own download, started from
-        # the list's read while the region was deleted, wrote half of it back, listed as installed
-        # (the review of 2026-11-11)
+        thread = threading.Thread(target=self._rivers, name="live-rivers", daemon=True)
+        with self._lock:
+            if self._install_thread is not None and self._install_thread.is_alive():
+                busy = True
+            else:
+                busy = False
+                self._rivers_stop.clear()
+                self._install_thread = self._rivers_thread = thread
+                self._quiet = False
+        if busy:
+            self.log("the river masks come with Update once the install under way is done")
+            return False
+        thread.start()
+        return True
+
+    def _rivers(self) -> None:
+        root = live_root()
+        with self._lock:
+            catalog = self._catalog
+        if catalog is None:  # the list not read yet: read here, the place held meanwhile
+            try:
+                catalog = self._catalog_of(root)
+            except Exception as e:
+                self.log(f"the river masks wait for the list of regions: {e}")
+                return
+            with self._lock:
+                self._catalog, self._catalog_error = catalog, None
+                self._catalog_at = time.monotonic()
+        for region_id in REGION_NAMES:
+            region = catalog.get(region_id)
+            try:
+                if region is None or region_id not in osxpregions.installed(root):
+                    continue
+                if not osxpregions.rivers_to_add(root, region):
+                    continue
+            except OSError as e:  # its folder unreadable this moment: its Update stays offered
+                self.log(f"the river masks of {region_id} wait: {e}")
+                continue
+            installer = self._installer_of(
+                root, region, overlays=False, log=self.log, rivers=True, may_swap=self._may_swap
+            )
+            with self._lock:
+                if self._rivers_stop.is_set():
+                    return
+                self._installer = installer
+            installer.run()
+            # river masks whole and waiting for Live's next start (X-Plane open) are done too
+            if installer.snapshot().get("phase") not in ("done", "waiting"):
+                return
+
+    @contextlib.contextmanager
+    def _deleting(self, region_id: str) -> Iterator[None]:
+        """The one rule of a deletion from the disk, a region's and its kept old mesh's alike: not
+        while Live streams, nor while the region is being installed (any region, by the night
+        grids' or the river masks' rounds), nor while X-Plane runs, which reads the region's roads,
+        forests and buildings straight from it (:meth:`_may_swap`, ``osxpregions.XPLANE_READS``; a
+        campaign of 2026-11-18 deleted them under a flying X-Plane). Nothing else reads a kept old
+        mesh then, and a start with X-Plane running on a mesh that changed is refused
+        (``region.pack_to_redo``). One check and one taking, as an install's: the installs' one
+        place is held meanwhile where it is free, as the night grids' own download, started from
+        the list's read while the region was deleted, wrote half of it back, listed as installed
+        (the review of 2026-11-11). Mesh back to new after, once no region keeps an old mesh
+        (:meth:`_mesh_follows_kept`)."""
+        self._stop_night_grids()
         with self._lock:
             running = self._install_thread
             if running is not None and not running.is_alive():
@@ -907,7 +1091,7 @@ class LiveControl:
             if self._state != IDLE:
                 raise session.RefusedError("Live is streaming: stop it first")
             if running is not None and (
-                running is self._night_thread
+                running in (self._night_thread, self._rivers_thread)  # any region, one by one
                 or (self._installer is not None and self._installer.region.id == region_id)
             ):
                 raise session.RefusedError("this region is being installed: stop that first")
@@ -915,17 +1099,57 @@ class LiveControl:
             if taken is not None:
                 self._install_thread = taken
         try:
-            if not osxpregions.mesh_dir(live_root(), region_id).exists():
-                raise session.RefusedError(f"the region {region_id!r} is not installed")
-            squares = squares_of({region_id}).get(region_id, [])
-            osxpregions.remove(
-                live_root(), region_id, [(lat, lon) for lat, lon in squares], log=self.log
-            )
+            if not self._may_swap():
+                raise session.RefusedError(osxpregions.XPLANE_READS)
+            yield
             self._checked = (0.0, None)
+            self._mesh_follows_kept()
         finally:
             with self._lock:
                 if taken is not None and self._install_thread is taken:
                     self._install_thread = None
+
+    def _mesh_follows_kept(self) -> None:
+        """The Settings' Mesh back to new once no region keeps an old mesh, one still waiting to
+        be renamed as kept counted, and never while a region's disk is not connected
+        (``osxpregions.keeps_any_old``): Old left behind would stream the next old mesh kept,
+        unasked. Its switch shows only while one is kept."""
+        settings = self._settings()
+        if settings.mesh != "old":
+            return
+        if osxpregions.keeps_any_old(live_root()):
+            return
+        from orthostudio.live.settings import save_settings
+
+        save_settings(settings.model_copy(update={"mesh": "new"}))
+        self.log("no region keeps an old mesh any more: Mesh is New again")
+
+    def remove_region(self, region_id: str) -> None:
+        """The window's Delete on one of OrthoStudio XP's regions, by the rule of every deletion
+        (:meth:`_deleting`): its installed mesh deleted, its kept old mesh taking its place where
+        it keeps one, else the region with its overlays (``osxpregions.remove``)."""
+        with self._deleting(region_id):
+            if not osxpregions.present(live_root(), region_id):
+                raise session.RefusedError(f"the region {region_id!r} is not installed")
+            squares = squares_of({region_id}).get(region_id, [])
+            try:
+                osxpregions.remove(
+                    live_root(), region_id, [(lat, lon) for lat, lon in squares], log=self.log
+                )
+            except osxpregions.InstallError as e:  # held open: nothing deleted
+                raise session.RefusedError(str(e)) from e
+
+    def remove_kept(self, region_id: str) -> None:
+        """The window's Delete on a region's kept old mesh, which cannot be downloaded again
+        (``osxpregions.remove_kept``), by the rule of every deletion
+        (:meth:`_deleting`). The region's overlays stay: its new mesh has them too."""
+        with self._deleting(region_id):
+            if osxpregions.kept_mesh(live_root(), region_id) is None:
+                raise session.RefusedError(f"the region {region_id!r} keeps no old mesh")
+            try:
+                osxpregions.remove_kept(live_root(), region_id, log=self.log)
+            except osxpregions.InstallError as e:  # held open: nothing deleted
+                raise session.RefusedError(str(e)) from e
 
     def wait_idle(self, timeout: float | None = None) -> bool:
         thread = self._thread

@@ -29,10 +29,9 @@ from orthostudio.live.gate import read_flight_time
 from orthostudio.live.pack import (
     LINK_NAME,
     OVERLAY_LINK_NAME,
-    FolderError,
-    check_folder,
     default_cache_path,
     default_pack_dir,
+    folder_problem,
     live_root,
 )
 from orthostudio.live.rings import DEFAULT_MARGIN
@@ -107,6 +106,9 @@ class Options:
     own_tiles: str = "first"  # the pilot's own tiles first, or "under" Live's pack while it runs
     night: bool = False  # the towns' lights at night (orthostudio.live.night); the app: on
     night_light: str = "normal"  # their strength, a key of orthostudio.live.night.LIGHTS
+    # rivers and lakes faded at their banks through their masks (orthostudio.live.waterphoto), or
+    # evenly see-through; the sea always fades
+    rivers_fade: bool = False
 
 
 class StartClock:
@@ -149,6 +151,14 @@ def xplane_dir(explicit: Path | None) -> Path:
         return find_xplane(explicit)
     except OsxpError as exc:
         raise RefusedError(f"{exc.message} {exc.remedy}") from exc
+
+
+def xplane_or_none() -> Path | None:
+    """X-Plane's folder found by itself, None where it is not."""
+    try:
+        return xplane_dir(None)
+    except RefusedError:
+        return None
 
 
 def _recorded_sources(pack: Path) -> list[str]:
@@ -264,12 +274,14 @@ def prepare(options: Options, log: Log) -> Prepared:
         LAYOUT_FIXED,
         Zooms,
         needs_relayout,
+        pack_to_redo,
         region_layout,
         relayout,
         remove_aside,
         remove_temps,
         set_decal,
         set_night,
+        set_water,
         set_zooms,
         setup_region,
     )
@@ -300,13 +312,21 @@ def prepare(options: Options, log: Log) -> Prepared:
             f"{who[0].upper()}{who[1:]} {verb} running: quit {pronoun} first, only one program "
             "may stream ortho to X-Plane"
         )
-    try:
-        check_folder(live_root(), custom_scenery=xp_dir / "Custom Scenery", create=True)
-    except FolderError as e:
-        raise RefusedError(f"Live's folder: {e}. Choose another in the Live window.") from e
+    problem = folder_problem(live_root(), xp_dir, create=True)
+    if problem is not None:
+        raise RefusedError(f"Live's folder: {problem}. Choose another in the Live window.")
     from orthostudio.live import winsearch
 
     winsearch.keep_out(live_root(), log)  # Windows: its files too many for the indexer
+    # Live's regions as a stop of an install left them made right, and each update waiting whole
+    # put in place first, X-Plane not running: else Live flies the regions of before, and the
+    # updates keep waiting (orthostudio.live.osxpregions)
+    from orthostudio.live import aoregions, osxpregions
+
+    try:
+        osxpregions.settle(live_root(), log, swap=not xplane_running())
+    except OSError as e:  # the regions as they are: the checks below say what is missing
+        log(f"Live's regions could not be checked: {e}")
     # another tool's mesh as it is now, once for the start: its mesh and its roads go together
     other = NO_OTHER_MESH if options.source else other_mesh_found(xp_dir, live_root(), fresh=True)
     sources = [options.source] if options.source else default_sources(xp_dir, other=other)
@@ -350,13 +370,26 @@ def prepare(options: Options, log: Log) -> Prepared:
         fix = Fix(lat, lon)
         clock.done("departure")
     zooms = Zooms(options.max_zoom, options.max_zoom_airports)
+    if xplane_running() and pack_to_redo(sources, pack_dir):  # as a new zoom, below
+        raise RefusedError(
+            "the meshes Live streams onto changed since its last start, and X-Plane may be "
+            "reading those of before. Quit X-Plane, or connect the disk holding a mesh, then start "
+            "again"
+        )
     from orthostudio.live import machine
 
     # the pack's one-time work (hundreds of thousands of files) in the system's background mode for
     # the disk: every other program keeps it (machine.background_io)
     with machine.background_io():
         try:
-            setup_region(sources, pack_dir, log=log, zooms=zooms, xplane_running=xplane_running)
+            setup_region(
+                sources,
+                pack_dir,
+                log=log,
+                zooms=zooms,
+                xplane_running=xplane_running,
+                lists=aoregions.lists_dir(live_root()),
+            )
         except OsxpError as e:
             if e.code != "XP_LINK_FAILED" or not other.meshes or sys.platform != "win32":
                 raise
@@ -369,6 +402,7 @@ def prepare(options: Options, log: Log) -> Prepared:
             ) from e
         set_decal(pack_dir, options.decal, log=log, xplane_running=xplane_running)
         set_night(pack_dir, options.night, log=log, xplane_running=xplane_running)
+        set_water(pack_dir, options.rivers_fade, log=log, xplane_running=xplane_running)
         left = remove_temps(pack_dir)  # before anything writes there
         if left:
             log(f"{left} unfinished files a stopped Live left among the textures removed")
@@ -410,7 +444,11 @@ def prepare(options: Options, log: Log) -> Prepared:
             plugin.installed(xp_dir) if xplane_running() else plugin.install(xp_dir, log=log)
         ):
             try:
-                gate = Gate(xp_dir, AirportIndex(apt_dat(xp_dir), airport_files(xp_dir)))
+                gate = Gate(
+                    xp_dir,
+                    AirportIndex(apt_dat(xp_dir), airport_files(xp_dir)),
+                    lang=options.language,
+                )
             except OSError as e:
                 # never streaming without it: the plugin, finding nobody there as X-Plane starts,
                 # would take Live's scenery out of X-Plane (the review of 2026-10-01)
