@@ -423,7 +423,7 @@ def encoders(cores: int, ram_gb: float | None = None) -> int:
 def flight_encodes(cores: int, ram_gb: float | None = None) -> int:
     """Textures encoded at once while X-Plane flies: a third of the cores left to Live, four at
     most, and one for each 8 GB of memory."""
-    n = max(1, min(MAX_FLIGHT_ENCODES, (cores - 2) // 3))
+    n = max(1, min(MAX_FLIGHT_ENCODES, cpu_workers(cores) // 3))
     if ram_gb is not None:
         n = min(n, max(1, int(ram_gb // GB_PER_FLIGHT_ENCODE)))
     return n
@@ -482,12 +482,10 @@ def share(workers: int | None = None) -> Share:
     (``--workers``, no more than a pool may have), else as its cores and memory allow
     (:func:`encoders`)."""
     cores, ram = machine()
-    if workers:
-        workers = pool_size(workers)
     return Share(
         cores,
         ram,
-        workers if workers else encoders(cores, ram),
+        pool_size(workers) if workers else encoders(cores, ram),
         flight_encodes(cores, ram),
         sharp_builds(ram),
     )

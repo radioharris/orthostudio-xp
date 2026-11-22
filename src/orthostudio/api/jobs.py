@@ -49,7 +49,7 @@ from orthostudio.fsutil import atomic_write_text
 from orthostudio.imagery.chunks import ChunkStore
 from orthostudio.imagery.grid import TextureId
 from orthostudio.imagery.providers import load_registry
-from orthostudio.machine import cpu_workers
+from orthostudio.machine import cpu_workers, subprocess_slots
 from orthostudio.model import TileRef
 from orthostudio.pipeline.build import (
     PUT_BACK_ROLE,
@@ -59,7 +59,6 @@ from orthostudio.pipeline.build import (
     BuildSpec,
     Phase,
     build_tiles,
-    default_subprocess_slots,
 )
 from orthostudio.pipeline.home import data_root_missing, osxp_home
 from orthostudio.sched import Done, Failed, Progress, Started, Stats
@@ -395,11 +394,11 @@ class Job:
         self._slots: dict[str, int] = {
             "overpass": 1,
             "relief": 1,
-            "tracing": default_subprocess_slots(),
+            "tracing": subprocess_slots(),
             "coast": 1,
             "net": 1,
             "io": 2,
-            "subprocess": default_subprocess_slots(),
+            "subprocess": subprocess_slots(),
             "cpu": cpu_workers(),
         }
         self._texture_cost: dict[str, TextureCost] = {}

@@ -56,7 +56,7 @@ from orthostudio.imagery.chunks import (
 )
 from orthostudio.imagery.grid import TextureId, texture_name, texture_tiles
 from orthostudio.imagery.providers import Provider, cache_name, is_placeholder, tile_url
-from orthostudio.machine import cpu_workers, pool_size
+from orthostudio.machine import cpu_workers
 from orthostudio.net import Fetcher, FetchRequest, FetchResult, FetchStats
 from orthostudio.parentwatch import leave_with_parent
 from orthostudio.pipeline.home import default_chunks_root, default_store_root
@@ -880,7 +880,7 @@ class _Pipeline:
         )
         self.parent_cache = ParentCache(spec.chunks_root, folder, fsync=False, on_write=spec.wrote)
         self.store = Store(spec.store_root, fsync=spec.fsync)
-        self.workers = cpu_workers() if spec.workers is None else pool_size(max(0, spec.workers))
+        self.workers = cpu_workers() if spec.workers is None else max(0, spec.workers)
         self.jobs = merge_jobs(spec.jobs)
         self.states: list[_TexState] = []
         self.by_index: dict[int, _TexState] = {}

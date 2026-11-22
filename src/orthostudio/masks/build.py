@@ -98,13 +98,13 @@ def env_workers() -> int | None:
     The **only** parser of that variable (review 4, finding M2: three copies disagreed on
     ``0`` and on negative values). A value that is not a positive integer -- ``0``, ``-4``,
     ``x`` -- is treated as *unset*, so the pipeline's RAM budget and the pool the rule starts
-    can never be computed from two different numbers.
+    can never be computed from two different numbers; no more than a pool may have.
     """
     raw = os.environ.get(WORKERS_ENV)
     if raw is None or not raw.strip().lstrip("+").isdigit():
         return None
     value = int(raw)
-    return value if value > 0 else None
+    return pool_size(value) if value > 0 else None
 
 
 def worker_count(cells: int, workers: int | None = None) -> int:
@@ -120,7 +120,7 @@ def worker_count(cells: int, workers: int | None = None) -> int:
         workers = env_workers()
     if workers is None or workers <= 0:
         workers = min(MAX_WORKERS, processors())
-    return pool_size(max(1, min(workers, max(1, cells))))
+    return max(1, min(workers, max(1, cells)))
 
 
 def _check_cancelled(cancel: threading.Event | None, tile: TileRef) -> None:

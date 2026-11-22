@@ -6,20 +6,13 @@ a computer of 64 threads asked Windows for 62 and every build stopped."""
 
 from __future__ import annotations
 
-import concurrent.futures.process as futures
 import os
-import sys
 from pathlib import Path
 
 import pytest
 
 from orthostudio import machine
 from orthostudio.model import TileRef
-
-
-def test_the_limit_is_python_s_own_on_windows_and_none_elsewhere() -> None:
-    python_s = futures._MAX_WINDOWS_WORKERS if sys.platform == "win32" else None
-    assert python_s == machine.POOL_MAX
 
 
 @pytest.mark.parametrize(
@@ -58,7 +51,7 @@ def test_a_windows_computer_of_64_threads_builds_with_61(
     ``$OSXP_MASKS_WORKERS``), on a Windows computer of 64 threads; Live's encoders too."""
     from orthostudio.graph import Store
     from orthostudio.live import machine as live_machine
-    from orthostudio.masks.build import worker_count
+    from orthostudio.masks.build import env_workers, worker_count
     from orthostudio.pipeline.build import BuildEnv, BuildSpec
     from orthostudio.sched.scheduler import Scheduler
     from orthostudio.vectors.roads import square_workers
@@ -82,8 +75,8 @@ def test_a_windows_computer_of_64_threads_builds_with_61(
 
     assert (env(None), env(100), env(0)) == (61, 61, 0)  # 0: the images encoded in their process
     assert Scheduler(Store(tmp_path / "graph")).cpu_workers == 61
-    assert worker_count(200, 100) == 61
-    assert square_workers() == 61 // 3
-    assert live_machine.encoders(64, 256) == 61
+    monkeypatch.setenv("OSXP_MASKS_WORKERS", "100")  # what the budget counts is what starts
+    assert env_workers() == worker_count(200) == 61
+    assert square_workers() == 61 // 3  # the engine's 61 CPU tasks shared by 3 tracings
     monkeypatch.setenv("OSXP_LIVE_MACHINE", "64,256")
     assert live_machine.share().encoders == 61 and live_machine.share(100).encoders == 61

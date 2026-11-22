@@ -29,6 +29,7 @@ __all__ = [
     "pool_size",
     "process_memory_mb",
     "processors",
+    "subprocess_slots",
 ]
 
 POOL_MAX: int | None = (
@@ -55,6 +56,14 @@ def cpu_workers(count: int | None = None) -> int:
     than a pool may have here; of ``count`` processors, else of this computer's
     (:func:`processors`). A computer of 64 threads asked Windows for 62 and every build stopped."""
     return pool_size(max(1, (processors() if count is None else count) - 2))
+
+
+def subprocess_slots() -> int:
+    """How many relief, mesh and overlay nodes of a build run at once, and how many tracings
+    beside them: the processors less one, 3 at most. A quarter of them gave a 4-core Windows
+    virtual machine one, and a batch's stages ran one after the other; the RAM budget still holds
+    back what memory cannot."""
+    return min(3, max(1, processors() - 1))
 
 
 def physical_memory_mb() -> int | None:

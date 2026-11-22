@@ -25,6 +25,7 @@ import pytest
 
 import orthostudio.masks.rule as masks_rule
 import orthostudio.pipeline.native as native
+from orthostudio import machine
 from orthostudio.dem.rule import DemJob
 from orthostudio.dem.sources import CellState, EnsureOptions, NegativeMemo, ensure_elevation
 from orthostudio.errors import OsxpError
@@ -313,7 +314,7 @@ def test_the_masks_node_budgets_for_the_worker_count_the_rule_uses(
         job = masks_rule.current_masks_job()
         assert job is not None
         assert worker_count(64, job.workers) == budgeted_workers
-    assert worker_count(64, None) == min(8, os.cpu_count() or 4)  # the capped default
+    assert worker_count(64, None) == min(8, machine.processors())  # the capped default
 
 
 def test_the_same_env_var_is_parsed_once_for_everybody(
@@ -646,8 +647,8 @@ def test_three_masks_nodes_may_run_at_once_each_with_its_own_process_pool(
     monkeypatch.setattr(buildmod, "physical_memory_mb", lambda: 16384)  # sand's 8 from 8 GB
     from orthostudio.masks.water import mask_cells
 
-    slots = buildmod.default_subprocess_slots()
-    cpus = os.cpu_count() or 4
+    slots = machine.subprocess_slots()
+    cpus = machine.processors()
     env = BuildEnv.create([_spec(tmp_path)])
     budgeted = slots * buildmod._masks_ram_mb(env, masks_rule.MasksParams())
     # a coastal tile at mask_zl 16: 13 x 17 cells of the mask grid, so the cap is cpu_count
@@ -859,10 +860,10 @@ def test_a_cancelled_pool_run_commits_nothing_at_all(tmp_path: Path) -> None:
     assert not (out / "index.json").exists()
 
 
-def test_default_subprocess_slots_follow_the_cores(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_subprocess_slots_follow_the_cores(monkeypatch: pytest.MonkeyPatch) -> None:
     """The cores less one, 3 at most: a 4-core Windows virtual machine ran a batch's relief,
     vector and mesh stages one at a time with a quarter of its cores (2026-09-15)."""
     for cores, slots in ((1, 1), (2, 1), (3, 2), (4, 3), (14, 3), (None, 3)):
         monkeypatch.setattr(os, "process_cpu_count", lambda cores=cores: cores, raising=False)
         monkeypatch.setattr(os, "cpu_count", lambda cores=cores: cores)
-        assert buildmod.default_subprocess_slots() == slots, cores
+        assert machine.subprocess_slots() == slots, cores

@@ -76,7 +76,7 @@ from orthostudio.machine import (  # noqa: F401
     cpu_workers,
     physical_memory_mb,
     pool_size,
-    processors,
+    subprocess_slots,
 )
 from orthostudio.masks.build import MAX_WORKERS as MASKS_MAX_WORKERS
 from orthostudio.masks.build import env_workers as masks_env_workers
@@ -2986,16 +2986,6 @@ class BuildReport:
         }
 
 
-def default_subprocess_slots() -> int:
-    """How many relief, mesh and overlay nodes run at once, and how many tracings beside them
-    (:data:`TRACING_LANE`): the cores less one, 3 at most. The masks have a lane of their own
-    (:data:`COAST_LANE`). It was a quarter of the cores: 3
-    on a 14-core Mac, but 1 on a 4-core Windows virtual machine, where these stages of a batch
-    ran one after the other and a user saw every tile's data before any terrain (2026-09-15).
-    The RAM budget still holds back what memory cannot."""
-    return min(3, max(1, processors() - 1))
-
-
 OVERPASS_LANE = "overpass"
 """The lane of the OSM downloads (``Node.lane``): one tile at a time, since the Overpass client
 already takes its mirrors' quota (two requests a cluster), and apart from the imagery's network
@@ -3076,7 +3066,7 @@ def make_scheduler(
     return Scheduler(
         store,
         cpu_workers=cpu_workers if cpu_workers is not None else env.workers,
-        subprocess_slots=default_subprocess_slots(),
+        subprocess_slots=subprocess_slots(),
         net_slots=1,
         io_slots=2,
         ram_budget_mb=ram_budget_mb(env.memory_share),
@@ -3086,7 +3076,7 @@ def make_scheduler(
         lanes={
             OVERPASS_LANE: 1,
             RELIEF_LANE: 1,
-            TRACING_LANE: default_subprocess_slots(),
+            TRACING_LANE: subprocess_slots(),
             COAST_LANE: 1,
         },
     )

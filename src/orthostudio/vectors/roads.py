@@ -49,7 +49,7 @@ from shapely import affinity, geometry
 from shapely.geometry.base import BaseGeometry
 
 from orthostudio.errors import OsxpError
-from orthostudio.machine import cpu_workers, processors
+from orthostudio.machine import cpu_workers, subprocess_slots
 from orthostudio.model import TileRef
 from orthostudio.parentwatch import leave_with_parent
 from orthostudio.vectors.geom import polygons_of
@@ -219,11 +219,10 @@ def _square_bands(square: _Square) -> BaseGeometry:
 
 
 def square_workers() -> int:
-    """The processes one tracing buffers its squares on: the engine's CPU tasks (the cores less
-    two) shared by the tracings that may run at once (``pipeline.build.default_subprocess_slots``,
-    the cores less one, 3 at most): 4 on a 14-core Mac, 1 on 4 cores."""
-    cores = processors()
-    return max(1, cpu_workers(cores) // min(3, max(1, cores - 1)))
+    """The processes one tracing buffers its squares on: the engine's CPU tasks
+    (:func:`orthostudio.machine.cpu_workers`) shared by the tracings that may run at once
+    (:func:`orthostudio.machine.subprocess_slots`): 4 on a 14-core Mac, 1 on 4 cores."""
+    return max(1, cpu_workers() // subprocess_slots())
 
 
 def improved_buffer_in_squares(
