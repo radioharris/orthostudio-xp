@@ -49,6 +49,7 @@ from orthostudio.fsutil import atomic_write_text
 from orthostudio.imagery.chunks import ChunkStore
 from orthostudio.imagery.grid import TextureId
 from orthostudio.imagery.providers import load_registry
+from orthostudio.machine import cpu_workers
 from orthostudio.model import TileRef
 from orthostudio.pipeline.build import (
     PUT_BACK_ROLE,
@@ -61,7 +62,6 @@ from orthostudio.pipeline.build import (
     default_subprocess_slots,
 )
 from orthostudio.pipeline.home import data_root_missing, osxp_home
-from orthostudio.pipeline.textures import default_workers
 from orthostudio.sched import Done, Failed, Progress, Started, Stats
 from orthostudio.sources.osm import shared_board
 
@@ -400,7 +400,7 @@ class Job:
             "net": 1,
             "io": 2,
             "subprocess": default_subprocess_slots(),
-            "cpu": default_workers(),
+            "cpu": cpu_workers(),
         }
         self._texture_cost: dict[str, TextureCost] = {}
         self._prior: dict[str, float] = {}

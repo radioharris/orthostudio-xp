@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from orthostudio import machine as osxp_machine
 from orthostudio.live import control, machine
 
 
@@ -40,9 +41,9 @@ def test_the_share_follows_the_computer(
 def test_windows_pools_hold_61_processes_at_most(monkeypatch: pytest.MonkeyPatch) -> None:
     """Python's process pools take 61 processes at most on Windows: a computer of 128 threads and
     384 GB gets 61 encoders there, every core but two elsewhere."""
-    monkeypatch.setattr(machine, "WINDOWS", False)
+    monkeypatch.setattr(osxp_machine, "POOL_MAX", None)
     assert machine.encoders(128, 384) == 126
-    monkeypatch.setattr(machine, "WINDOWS", True)
+    monkeypatch.setattr(osxp_machine, "POOL_MAX", 61)
     assert machine.encoders(128, 384) == 61
     assert machine.encoders(14, 48) == 12
 

@@ -15,7 +15,7 @@ from orthostudio.sched.node import (
     artifact_ref,
     run_p0_rule,
 )
-from orthostudio.sched.scheduler import PlanEntry, Scheduler, default_cpu_workers
+from orthostudio.sched.scheduler import PlanEntry, Scheduler
 
 __all__ = [
     "DEFAULT_ALPHA",
@@ -37,7 +37,6 @@ __all__ = [
     "Stats",
     "artifact_ref",
     "cost_name",
-    "default_cpu_workers",
     "run_p0_rule",
     "run_p0_rule_apart",
 ]

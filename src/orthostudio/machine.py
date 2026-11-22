@@ -1,12 +1,13 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""What the machine has: its installed memory, what of it is free now, and what a process's
-children hold.
+"""What the machine has: its processors and how many processes a pool may have, its installed
+memory, what of it is free now, and what a process's children hold.
 
 The scheduler's RAM budget reads them (``pipeline/build.py``), and the reader of one's own relief
 files reads the installed memory, which must know before it fills the memory whether a raster fits
 (``dem/raster.py``). Each answer is ``None`` when the platform does not give it: the scheduler
-then keeps to its share of the installed memory.
+then keeps to its share of the installed memory. Build and Live count their processes with
+:func:`cpu_workers`; this module loads nothing of the engine, which Live's fork server needs.
 """
 
 from __future__ import annotations
@@ -16,9 +17,44 @@ import ctypes
 import os
 import sys
 from collections.abc import Callable, Mapping
+from concurrent.futures import process as _futures
 from pathlib import Path
 
-__all__ = ["available_memory_mb", "children_memory_mb", "physical_memory_mb", "process_memory_mb"]
+__all__ = [
+    "POOL_MAX",
+    "available_memory_mb",
+    "children_memory_mb",
+    "cpu_workers",
+    "physical_memory_mb",
+    "pool_size",
+    "process_memory_mb",
+    "processors",
+]
+
+POOL_MAX: int | None = (
+    getattr(_futures, "_MAX_WINDOWS_WORKERS", 61) if sys.platform == "win32" else None
+)
+"""The processes a pool may have here: Python's own limit on Windows, where a pool waits on its
+processes with ``WaitForMultipleObjects`` (63 handles, two of them its own), and refuses more;
+none elsewhere."""
+
+
+def processors() -> int:
+    """The logical processors this process may use (Linux's affinity, from Python 3.13), else all
+    of them; 4 when the system does not say."""
+    return getattr(os, "process_cpu_count", os.cpu_count)() or 4
+
+
+def pool_size(n: int) -> int:
+    """``n`` processes, no more than a pool may have here (:data:`POOL_MAX`)."""
+    return n if POOL_MAX is None else min(n, POOL_MAX)
+
+
+def cpu_workers(count: int | None = None) -> int:
+    """The processes the processor's work takes: every processor but two, at least one, no more
+    than a pool may have here; of ``count`` processors, else of this computer's
+    (:func:`processors`). A computer of 64 threads asked Windows for 62 and every build stopped."""
+    return pool_size(max(1, (processors() if count is None else count) - 2))
 
 
 def physical_memory_mb() -> int | None:

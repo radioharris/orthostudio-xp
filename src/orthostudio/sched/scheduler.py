@@ -14,7 +14,6 @@ import asyncio
 import contextlib
 import heapq
 import logging
-import os
 import re
 import shutil
 import sqlite3
@@ -30,6 +29,7 @@ from typing import Any, Literal
 
 import blake3
 
+from orthostudio import machine
 from orthostudio.errors import OsxpError, wrap
 from orthostudio.graph.errors import InvalidNodeError
 from orthostudio.graph.keys import key_for
@@ -40,7 +40,7 @@ from orthostudio.sched.events import Done, Event, Failed, NodeKind, Progress, St
 from orthostudio.sched.node import Node, artifact_ref
 from orthostudio.sched.workers import CpuJob, Outcome, cpu_entry, cpu_init, error_from_dict, execute
 
-__all__ = ["PlanEntry", "Scheduler", "default_cpu_workers"]
+__all__ = ["PlanEntry", "Scheduler"]
 
 log = logging.getLogger("orthostudio.sched")
 
@@ -51,11 +51,6 @@ _State = Literal["pending", "ready", "waiting", "running", "done", "failed"]
 def _lane_pool(name: str) -> str:
     """The running counter of a lane, apart from the kinds' counters."""
     return f"lane:{name}"
-
-
-def default_cpu_workers() -> int:
-    """``os.cpu_count() - 2``, at least 1 (PLAN section 3: cores - 2 CPU tasks)."""
-    return max(1, (os.cpu_count() or 2) - 2)
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,7 +111,7 @@ class Scheduler:
         lanes: Mapping[str, int] | None = None,
     ) -> None:
         self.store = store
-        self.cpu_workers = default_cpu_workers() if cpu_workers is None else max(1, cpu_workers)
+        self.cpu_workers = machine.cpu_workers() if cpu_workers is None else max(1, cpu_workers)
         self.slots: dict[NodeKind, int] = {
             "cpu": self.cpu_workers,
             "subprocess": max(1, subprocess_slots),

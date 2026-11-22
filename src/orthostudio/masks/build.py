@@ -28,6 +28,7 @@ from numpy.typing import NDArray
 from PIL import Image
 
 from orthostudio.errors import OsxpError
+from orthostudio.machine import pool_size, processors
 from orthostudio.masks.distance import distance_mask
 from orthostudio.masks.profiles import (
     MasksWidth,
@@ -109,7 +110,7 @@ def env_workers() -> int | None:
 def worker_count(cells: int, workers: int | None = None) -> int:
     """How many processes to use: the argument, then ``$OSXP_MASKS_WORKERS``, then the default.
 
-    The default is ``min(MAX_WORKERS, os.cpu_count())`` and never the bare core count: the
+    The default is ``min(MAX_WORKERS, processors())`` and never the bare core count: the
     caller that budgets the RAM of the node (``pipeline.build._masks_ram_mb``) pays a worker of
     its profile per process (``masks.rule.masks_worker_mb``), and an unbounded pool made that
     budget meaningless (review 4, finding M1). An explicit argument is honoured as given -- it is
@@ -118,8 +119,8 @@ def worker_count(cells: int, workers: int | None = None) -> int:
     if workers is None:
         workers = env_workers()
     if workers is None or workers <= 0:
-        workers = min(MAX_WORKERS, os.cpu_count() or 4)
-    return max(1, min(workers, max(1, cells)))
+        workers = min(MAX_WORKERS, processors())
+    return pool_size(max(1, min(workers, max(1, cells))))
 
 
 def _check_cancelled(cancel: threading.Event | None, tile: TileRef) -> None:

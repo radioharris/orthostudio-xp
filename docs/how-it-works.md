@@ -111,7 +111,8 @@ tile fails for want of map data.
 | **Install** | Links the tile into X-Plane's Custom Scenery (on Windows, a junction when the account may not make links) and writes its line in `scenery_packs.ini`. | under 1 s |
 
 Several tiles are built at once: the relief of up to three tiles is computed at the same time,
-the masks and DSFs of the others alongside, and the image encoding uses all the cores but two.
+the masks and DSFs of the others alongside, and the image encoding uses all the cores but two
+(61 processes at most on Windows, which refuses more).
 Downloads go through one network lane: one tile's imagery after the other, with up to 128
 requests to the provider at the same time (a limit measured not to get throttled,
 `docs/benchmarks/network.md`). A relief you chose to download (Copernicus, USGS) has a lane of

@@ -45,6 +45,8 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from orthostudio.machine import cpu_workers, pool_size, processors
+
 MAX_FLIGHT_ENCODES = 4
 MAX_SHARP_BUILDS = 4
 GB_PER_ENCODER = 3.0  # an encoder's 0.36 GB at a 4096 px texture, X-Plane keeping the rest
@@ -65,9 +67,7 @@ def machine() -> tuple[int, float]:
         with contextlib.suppress(ValueError):
             said_cores, said_ram = said.split(",")
             return max(1, int(said_cores)), max(1.0, float(said_ram))
-    # the cores this process may use (Linux's affinity, from Python 3.13), else all of them
-    cores: int = getattr(os, "process_cpu_count", os.cpu_count)() or 4
-    return cores, memory_gb() or UNKNOWN_RAM_GB
+    return processors(), memory_gb() or UNKNOWN_RAM_GB
 
 
 def memory_gb() -> float | None:
@@ -410,16 +410,14 @@ def _windows_pool(pid: int) -> tuple[int, int] | None:
     return windows_pool_in(buffer, pid, _windows_thread_name)
 
 
-WINDOWS_POOL_MAX = 61  # the processes a pool may have on Windows (Python's ProcessPoolExecutor)
-
-
 def encoders(cores: int, ram_gb: float | None = None) -> int:
-    """Encoding processes: every core but two, all of them at work while X-Plane waits; one for
-    each 3 GB of memory at most, two at the least; 61 at most on Windows."""
-    n = max(1, cores - 2)
+    """Encoding processes: every core but two, all of them at work while X-Plane waits, no more
+    than a pool may have (:func:`orthostudio.machine.cpu_workers`); one for each 3 GB of memory
+    at most, two at the least."""
+    n = cpu_workers(cores)
     if ram_gb is not None:
         n = min(n, max(2, int(ram_gb // GB_PER_ENCODER)))
-    return min(n, WINDOWS_POOL_MAX) if WINDOWS else n
+    return n
 
 
 def flight_encodes(cores: int, ram_gb: float | None = None) -> int:
@@ -481,11 +479,11 @@ class Share:
 
 def share(workers: int | None = None) -> Share:
     """This computer's share for Live; ``workers`` encoding processes when they are set
-    (``--workers``, 61 at most on Windows), else as its cores and memory allow
+    (``--workers``, no more than a pool may have), else as its cores and memory allow
     (:func:`encoders`)."""
     cores, ram = machine()
-    if workers and WINDOWS:
-        workers = min(workers, WINDOWS_POOL_MAX)
+    if workers:
+        workers = pool_size(workers)
     return Share(
         cores,
         ram,

@@ -863,5 +863,6 @@ def test_default_subprocess_slots_follow_the_cores(monkeypatch: pytest.MonkeyPat
     """The cores less one, 3 at most: a 4-core Windows virtual machine ran a batch's relief,
     vector and mesh stages one at a time with a quarter of its cores (2026-09-15)."""
     for cores, slots in ((1, 1), (2, 1), (3, 2), (4, 3), (14, 3), (None, 3)):
-        monkeypatch.setattr(buildmod.os, "cpu_count", lambda cores=cores: cores)
+        monkeypatch.setattr(os, "process_cpu_count", lambda cores=cores: cores, raising=False)
+        monkeypatch.setattr(os, "cpu_count", lambda cores=cores: cores)
         assert buildmod.default_subprocess_slots() == slots, cores

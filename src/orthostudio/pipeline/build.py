@@ -73,7 +73,10 @@ from orthostudio.machine import (  # noqa: F401
     _windows_memory_mb,
     available_memory_mb,
     children_memory_mb,
+    cpu_workers,
     physical_memory_mb,
+    pool_size,
+    processors,
 )
 from orthostudio.masks.build import MAX_WORKERS as MASKS_MAX_WORKERS
 from orthostudio.masks.build import env_workers as masks_env_workers
@@ -158,7 +161,6 @@ from orthostudio.pipeline.textures import (
     TexturesReport,
     TexturesSpec,
     build_textures,
-    default_workers,
     resolve_encoder,
     write_report,
 )
@@ -553,7 +555,7 @@ class BuildEnv:
             global_scenery=global_scenery,
             dsftool=dsftool,
             registry=load_registry(first.registry_path),
-            workers=first.workers if first.workers is not None else default_workers(),
+            workers=pool_size(first.workers) if first.workers is not None else cpu_workers(),
             library_path=first.library_path,
             max_in_flight=first.max_in_flight,
             hedge_after_s=first.hedge_after_s,
@@ -2991,7 +2993,7 @@ def default_subprocess_slots() -> int:
     on a 14-core Mac, but 1 on a 4-core Windows virtual machine, where these stages of a batch
     ran one after the other and a user saw every tile's data before any terrain (2026-09-15).
     The RAM budget still holds back what memory cannot."""
-    return min(3, max(1, (os.cpu_count() or 4) - 1))
+    return min(3, max(1, processors() - 1))
 
 
 OVERPASS_LANE = "overpass"

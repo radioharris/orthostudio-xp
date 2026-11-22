@@ -37,7 +37,6 @@ Nothing here touches the network.
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import Sequence
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
@@ -50,6 +49,7 @@ from shapely import affinity, geometry
 from shapely.geometry.base import BaseGeometry
 
 from orthostudio.errors import OsxpError
+from orthostudio.machine import cpu_workers, processors
 from orthostudio.model import TileRef
 from orthostudio.parentwatch import leave_with_parent
 from orthostudio.vectors.geom import polygons_of
@@ -222,8 +222,8 @@ def square_workers() -> int:
     """The processes one tracing buffers its squares on: the engine's CPU tasks (the cores less
     two) shared by the tracings that may run at once (``pipeline.build.default_subprocess_slots``,
     the cores less one, 3 at most): 4 on a 14-core Mac, 1 on 4 cores."""
-    cores = os.cpu_count() or 4
-    return max(1, max(1, cores - 2) // min(3, max(1, cores - 1)))
+    cores = processors()
+    return max(1, cpu_workers(cores) // min(3, max(1, cores - 1)))
 
 
 def improved_buffer_in_squares(
