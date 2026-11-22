@@ -36,13 +36,18 @@ can include as it is the day Live comes into its window (``app.include_router``)
   and the squares in front, as saved (:mod:`.settings`, one function each);
 - ``GET``/``PUT /api/live/xplane-folder`` ``{"path"}``: the X-Plane folder named in OrthoStudio
   XP's settings, the same for Build and Live, with the other X-Planes of the computer;
-- ``GET /api/live/regions``: OrthoStudio XP's regions (:meth:`LiveControl.regions`);
+- ``GET /api/live/regions``: OrthoStudio XP's regions (:meth:`LiveControl.regions`), each with
+  its place in the window's line (``queued``) and why its last install failed (``failed``);
   ``POST /api/live/regions/{id}/install`` ``{"keep_old": bool, "make_room": bool}``: install or
-  update one, the region of before kept or not, its kept old mesh deleted first for room or not;
-  ``GET /api/live/regions/{id}/room``: the room its update lacks beside it, asked at the click;
-  ``DELETE /api/live/regions/{id}``: delete its installed mesh, its kept old mesh taking its place
-  where it keeps one, else the region; ``DELETE /api/live/regions/{id}/kept``: delete its kept old
-  mesh alone (409 for each where it may not);
+  update one, the region of before kept or not, its kept old mesh deleted first for room or not,
+  at once or, while another install runs, put in line with these answers until its turn (nothing
+  more for one in line already; refused at its turn, it says why in its ``failed``);
+  ``POST /api/live/regions/cancel``: stop the install under way and empty the line;
+  ``DELETE /api/live/regions/{id}/queued``: take one out of the line (nothing done where it is not
+  in it: its turn may have just come); ``GET /api/live/regions/{id}/room``: the room its update
+  lacks beside it, asked at the click; ``DELETE /api/live/regions/{id}``: delete its installed
+  mesh, its kept old mesh taking its place where it keeps one, else the region; ``DELETE
+  /api/live/regions/{id}/kept``: delete its kept old mesh alone (409 for each where it may not);
 - ``GET /api/live/providers``: the imagery sources, as OrthoStudio XP's ``GET /api/providers``;
 - ``POST /api/live/choose-folder`` ``{"prompt", "start"}``: the system's folder dialog, as
   OrthoStudio XP's ``POST /api/choose-folder``; ``POST /api/live/reveal`` ``{"path"}``: the
@@ -312,6 +317,11 @@ def live_router(
             control.install_region(region_id, keep_old=body.keep_old, make_room=body.make_room)
         except session.RefusedError as e:
             raise HTTPException(409, str(e)) from e
+        return control.regions()
+
+    @router.delete("/regions/{region_id}/queued")
+    def unqueue_region(region_id: str) -> dict[str, Any]:
+        control.unqueue_region(region_id)
         return control.regions()
 
     @router.get("/regions/{region_id}/room")

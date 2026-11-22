@@ -469,6 +469,19 @@ its update. A region may sit on another disk, linked from Live's folder: the pan
 one is. Live reads the regions of the light mesh, made in November 2026, from a list of their own:
 the Lives up to 2.2 keep the world of before, and the two never mix.
 
+**Several regions in a row.** Live installs one region at a time, but you need not wait for one to
+end before clicking the next: **Install** or **Update** while another install runs (or the masks of
+rivers and lakes download) puts the region in line, with your answers to its questions. Its row says
+it waits and its place (« Waiting: next in line », « Waiting: 2 ahead of it »), with **Cancel** to
+take it out of the line; each one starts as the one before ends, whether that one ended well or not.
+**Stop** stops the install under way and empties the line. When two installed regions or more have
+an update to start, **Update all** puts them all in line at once and asks only once whether to keep
+the old meshes (the question sums their sizes); it does not ask about room: each install checks the
+room as it starts, and a region short of room stops on its own line with the usual message while
+the others go on (its own **Update** then asks the room question). A region whose install fails, or
+cannot start at its turn (Live's folder unplugged meanwhile, say), says why on its row, and the line
+goes on with the next.
+
 **Keeping the old mesh.** When an update replaces a region's mesh, Live first asks whether to keep
 the old one: **Keep** leaves it on the disk beside the new one (the question says its size), so that
 you can go back to it; **Don't keep**, the default, deletes it once the new one is in place, as

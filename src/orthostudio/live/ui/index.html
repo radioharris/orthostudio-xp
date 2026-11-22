@@ -265,6 +265,9 @@
         </span></legend>
         <div class="fold-body is-folded" id="regions-body">
           <p class="question-help" data-i18n="regions.help"></p>
+          <!-- two updates or more to start: all put in line at once, one question (live.js updateAll) -->
+          <p class="regions-all" id="regions-all" hidden>
+            <button type="button" class="btn" id="regions-update-all" data-i18n="regions.update_all">Update all</button></p>
           <ul class="regions" id="regions-ours"></ul>
           <p class="question-help" id="regions-loading" data-i18n="regions.loading" hidden>Asking for the list…</p>
           <p class="question-help is-warn" id="regions-error" hidden></p>

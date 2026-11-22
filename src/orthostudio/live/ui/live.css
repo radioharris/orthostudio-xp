@@ -112,9 +112,12 @@
 .region-state { color: var(--fg-2); font-size: var(--fs-2); }
 .region-actions { display: flex; gap: 6px; justify-self: end; }
 .region-progress { font-variant-numeric: tabular-nums; }
-/* a region's kept old mesh, under its row: its size and its own Delete */
-.region-kept { display: flex; align-items: center; gap: 12px; color: var(--fg-2); font-size: var(--fs-2); }
-.region-kept .region-actions { margin-left: auto; }
+/* a line under a region's row with its own button (live.js regionSubLine): its kept old mesh
+   with its Delete, or its place in the line with the button that takes it out */
+.region-sub { display: flex; align-items: center; gap: 12px; color: var(--fg-2); font-size: var(--fs-2); }
+.region-sub .region-actions { margin-left: auto; }
+/* « Update all », above the list, on the side of the rows' buttons */
+.regions-all { display: flex; justify-content: flex-end; margin: var(--gap) 0 0; }
 /* the folders of other tools' meshes, a box each, framed as the card is (live.js drawOtherMeshes):
    its name, cut short where too long (whole in its hover), what it gives and its ↑ ↓ on a line; its
    path under them, small as a help and cut short too (whole in its hover); what the pilot acts on;

@@ -30,6 +30,7 @@ import time
 import traceback
 from collections import deque
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -95,6 +96,16 @@ class Refusal(NamedTuple):
 
     why: str
     what: str
+
+
+@dataclass(frozen=True, eq=False)
+class Queued:
+    """A region's install in the window's line, with the answers given at its click. Equal only to
+    itself: a region queued again after a Stop, with the same answers, is another turn."""
+
+    region: str
+    keep_old: bool = False
+    make_room: bool = False
 
 
 def resolve_departure(text: str) -> tuple[float, float]:
@@ -408,7 +419,8 @@ class LiveControl:
         self.in_frame = False
         self._thread: threading.Thread | None = None
         self._checked: tuple[float, dict[str, Any] | None] = (0.0, None)
-        # OrthoStudio XP's regions: the host's list, read in the background, one install at a time
+        # OrthoStudio XP's regions: the host's list, read in the background; the installs' one
+        # place (_install_thread), held by one install at a time, the others waiting in line
         self._catalog_of = catalog or osxpregions.catalog
         self._installer_of = installer or osxpregions.Installer
         self._catalog: dict | None = None
@@ -417,6 +429,12 @@ class LiveControl:
         self._catalog_thread: threading.Thread | None = None
         self._installer: Any = None
         self._install_thread: threading.Thread | None = None
+        # the window's line of regions to install (:meth:`install_region`): those waiting, and
+        # the one whose install holds the place; and why each region's last install failed, said
+        # on its row once another took the place
+        self._queue: list[Queued] = []
+        self._turn: Queued | None = None
+        self._failed: dict[str, str] = {}
         # the night grids of the regions installed before them, fetched by Live itself, unseen:
         # the pilot's own install goes first (:meth:`_fetch_night_grids`)
         self._quiet = False
@@ -537,6 +555,7 @@ class LiveControl:
             thread = self._install_thread
             if thread is None or not thread.is_alive():  # an install over ends with this start,
                 self._installer = None  # and the line of one failed or stopped with it
+                self._failed.clear()
             self._state, self._error, self._report = STARTING, None, None
             self._stop.clear()
             self._leave.clear()
@@ -883,7 +902,10 @@ class LiveControl:
                 return
             self._quiet = True
             thread = threading.Thread(
-                target=self._night_grids, args=(root, regions), name="live-night-grids", daemon=True
+                target=self._holding,
+                args=(self._night_grids, root, regions),
+                name="live-night-grids",
+                daemon=True,
             )
             self._install_thread = self._night_thread = thread
         thread.start()
@@ -925,8 +947,10 @@ class LiveControl:
         that tried did not put it in place (``held``), and what soft banks would download for it
         (``rivers_bytes``: its river masks it has not, the Settings' question sums them), whether
         its update replaces its mesh (``whole``: the window asks the room it lacks,
-        :meth:`update_room`, and whether to keep the one of before), and its kept old mesh
-        (``kept``: its size); the install under way. With ``fetch`` (the page's own request, not
+        :meth:`update_room`, and whether to keep the one of before), its kept old mesh (``kept``:
+        its size), its place in the window's line (``queued``: 1 for the next to start, None where
+        it does not wait) and why its last install failed or was refused at its turn (``failed``,
+        :meth:`_installer_for`); the install under way. With ``fetch`` (the page's own request, not
         its status), the host's list is read again in the background when old."""
         with self._lock:
             reading = self._catalog_thread is not None and self._catalog_thread.is_alive()
@@ -938,6 +962,8 @@ class LiveControl:
                 self._catalog_thread.start()
             catalog, error = self._catalog, self._catalog_error
             installer = None if self._quiet else self._installer
+            queued = [q.region for q in self._queue]
+            failed = dict(self._failed)
         root = live_root()
         mine = osxpregions.installed(root)
         settings = self._settings()
@@ -951,6 +977,8 @@ class LiveControl:
             # the disk's word, whether the list came or not
             item["waiting"] = region_id in mine and osxpregions.staged_whole(root, region_id)
             item["held"] = osxpregions.held(root, region_id)
+            item["queued"] = queued.index(region_id) + 1 if region_id in queued else None
+            item["failed"] = failed.get(region_id)
             kept = osxpregions.kept_mesh(root, region_id) if region_id in mine else None
             if kept is not None:
                 item["kept"] = {"size": _size_of(kept)}
@@ -997,68 +1025,153 @@ class LiveControl:
     def install_region(
         self, region_id: str, *, keep_old: bool = False, make_room: bool = False
     ) -> None:
-        """Download and install one of OrthoStudio XP's regions into Live's folder, or update one
-        (whole, beside the one installed, which it replaces), in the background. One at a time; a
-        region new while Live streams is used from the next start, and one installed is not
-        updated then: the pack reads its files. An update whole while X-Plane runs waits for Live's
-        next start with X-Plane not running (``osxpregions.settle``); Start waits for the install
-        (:meth:`installing`). ``keep_old``: the window's answer, the region of before kept at the
-        swap as the region's old mesh. ``make_room``: the window's « Delete the kept old one and
-        install the new one » where the disk lacks room (``osxpregions.Installer.make_room``),
-        which the install checks again by the window's own rule and only with Live stopped and
-        X-Plane not running, at the moment it deletes; Mesh back to new once no region keeps an
-        old mesh (:meth:`_mesh_follows_kept`)."""
+        """The window's Install or Update: one of OrthoStudio XP's regions downloaded and installed
+        into Live's folder, or updated (whole, beside the one installed, which it replaces), in the
+        background. Refused at once (:class:`session.RefusedError`) by the checks of every install
+        (:meth:`_may_install`); else put in the window's line, and started at once where the
+        installs' one place is free, else once the install holding it ends (a region's, the river
+        masks' or the night grids' round, a deletion: :meth:`_give_place`), by the one way an
+        install starts (:meth:`_next_turn`). A region in line already, or whose install holds the
+        place, is not put in it twice: nothing done. The night grids' own download gives way at
+        once, as before. A region new while Live streams is used from the next start, and one
+        installed is not updated then: the pack reads its files. An update whole while X-Plane
+        runs waits for Live's next start with X-Plane not running (``osxpregions.settle``); Start
+        waits for the line (:meth:`installing`). ``keep_old``: the window's answer, the region of
+        before kept at the swap as the region's old mesh. ``make_room``: the window's « Delete the
+        kept old one and install the new one » where the disk lacks room
+        (``osxpregions.Installer.make_room``), which the install checks again by the window's own
+        rule and only with Live stopped and X-Plane not running, at the moment it deletes; Mesh
+        back to new once no region keeps an old mesh (:meth:`_mesh_follows_kept`). Both are kept
+        with the region in line, as given at its click."""
+        self._may_install(region_id)
+        self._stop_night_grids()
+        with self._lock:
+            if not self._in_line(region_id):
+                self._failed.pop(region_id, None)
+                self._queue.append(Queued(region_id, keep_old, make_room))
+        self._next_turn()
+
+    def _in_line(self, region_id: str) -> bool:
+        """The lock held: whether the region waits in the window's line, or its install holds the
+        installs' place."""
+        line = self._queue if self._turn is None else [self._turn, *self._queue]
+        return any(q.region == region_id for q in line)
+
+    def _may_install(self, region_id: str) -> Any:
+        """The checks of a region's install, at its click and again at its turn in line: the
+        region in the host's list, Live's folder fit (never a region on the computer's own disk
+        while the disk of Live's folder is unplugged), and Live not streaming where the region is
+        installed. The region as listed; refused (:class:`session.RefusedError`) otherwise."""
         with self._lock:
             region = (self._catalog or {}).get(region_id)
         if region is None:
             raise session.RefusedError(f"no region {region_id!r} in the list of Live's regions")
-        # never a region on the computer's own disk while the disk of Live's folder is unplugged
         problem = folder_problem(live_root(), session.xplane_or_none(), create=True)
         if problem is not None:
             raise session.RefusedError(f"Live's folder: {problem}")
-        self._stop_night_grids()
-        installed = region_id in osxpregions.installed(live_root())
-        overlays, rivers = _takes(self._settings())
-        installer = self._installer_of(
-            live_root(),
-            region,
-            overlays=overlays,
-            log=self.log,
-            rivers=rivers,
-            may_swap=self._may_swap,
-            keep_old=keep_old,
-            make_room=make_room,
-        )
-        thread = threading.Thread(
-            target=self._install, args=(installer,), name="live-region-install", daemon=True
-        )
-        # one check and one taking: the night grids' own download, started from the list's read
-        # between the two, ran beside it on the same files (the review of 2026-11-11)
-        with self._lock:
-            if self._install_thread is not None and self._install_thread.is_alive():
-                raise session.RefusedError(
-                    "the night lights' grids are being downloaded: try again in a moment"
-                    if self._install_thread is self._night_thread
-                    else "the river masks are being downloaded: one install at a time"
-                    if self._install_thread is self._rivers_thread
-                    else "a region is being installed: one at a time"
-                )
-            if self._state != IDLE and installed:
-                raise session.RefusedError("Live is streaming over this region: stop it first")
-            self._installer, self._install_thread, self._quiet = installer, thread, False
-        thread.start()
+        if self._state != IDLE and region_id in osxpregions.installed(live_root()):
+            raise session.RefusedError("Live is streaming over this region: stop it first")
+        return region
 
-    def _install(self, installer: Any) -> None:
+    def _next_turn(self) -> None:
+        """The one way a region's install starts, a click's and a turn in line alike: where the
+        installs' one place is free, the region first in line takes it, in one check and one
+        taking (the night grids' own download, started from the list's read between the two, once
+        ran beside an install on the same files: the review of 2026-11-11). The thread that frees
+        the place or clicks holds it while the turn's checks are made again and its installer
+        made (:meth:`_installer_for`), so that the click's answer shows the install under way; then
+        the install's own thread holds it (:meth:`_install`). A turn refused there, or stopped as
+        it started, gives the place to the next one."""
+        while True:
+            with self._lock:
+                holder = self._install_thread
+                if not self._queue or (holder is not None and holder.is_alive()):
+                    return
+                turn = self._turn = self._queue.pop(0)
+                self._install_thread, self._quiet = threading.current_thread(), False
+            installer = self._installer_for(turn)
+            with self._lock:
+                if installer is not None and self._turn is turn:
+                    thread = threading.Thread(
+                        target=self._holding,
+                        args=(self._install, turn, installer),
+                        name="live-region-install",
+                        daemon=True,
+                    )
+                    self._installer, self._install_thread = installer, thread
+                    thread.start()
+                    return
+                self._install_thread = self._turn = None
+
+    def _installer_for(self, turn: Queued) -> Any:
+        """A turn's installer, with the answers of its click, once its checks are made again
+        (:meth:`_may_install`); None where they refuse it, which is kept as the region's
+        (``failed``, said on its row: the install holding the place next has the page's line)."""
+        try:
+            region = self._may_install(turn.region)
+            overlays, rivers = _takes(self._settings())
+            return self._installer_of(
+                live_root(),
+                region,
+                overlays=overlays,
+                log=self.log,
+                rivers=rivers,
+                may_swap=self._may_swap,
+                keep_old=turn.keep_old,
+                make_room=turn.make_room,
+            )
+        except Exception as e:  # said on its row: a turn's thread has nobody else to tell
+            said = str(e) if isinstance(e, session.RefusedError) else f"{type(e).__name__}: {e}"
+            with self._lock:
+                self._failed[turn.region] = said
+            self.log(f"install of {turn.region} not started: {said}")
+            return None
+
+    def _install(self, turn: Queued, installer: Any) -> None:
+        """A region's install, in its own thread (:meth:`_holding`), its failure kept as the
+        region's as a refusal is (:meth:`_installer_for`)."""
         installer.run()
+        progress = installer.snapshot()
+        if progress.get("phase") == "failed":
+            with self._lock:
+                self._failed[turn.region] = progress.get("error") or "failed"
         self._mesh_follows_kept()  # a kept old mesh deleted to make room
 
+    def _holding(self, work: Callable[..., None], *args: Any) -> None:
+        """The body of every thread holding the installs' one place (a region's install, the river
+        masks' or the night grids' round): ``work``, then the place given on, however it ended."""
+        try:
+            work(*args)
+        finally:
+            self._give_place()
+
+    def _give_place(self) -> None:
+        """The end of every holder of the installs' one place (:meth:`_holding`, a deletion): the
+        place freed by the thread holding it, then taken by the next region in line
+        (:meth:`_next_turn`), whatever the end, but after a Stop, which empties the line. Freed
+        here, never by the thread's death alone: a click between the holder's last look and its
+        end found the place held and was left waiting."""
+        with self._lock:
+            if self._install_thread is threading.current_thread():
+                self._install_thread, self._turn = None, None
+        self._next_turn()
+
     def cancel_install(self) -> None:
-        """The window's Stop: the install under way, and the round of river masks it is part of."""
+        """The window's Stop: the install under way, the round of river masks it is part of, and
+        every region waiting in line."""
         self._rivers_stop.set()
         with self._lock:
+            self._queue.clear()
+            self._turn = None  # an install starting as Stop came does not start
             installer = None if self._quiet else self._installer
         if installer is not None:
             installer.cancel()
+
+    def unqueue_region(self, region_id: str) -> None:
+        """A region taken out of the window's line, its install never started. Nothing done where
+        it is not in line: its turn may have come as the window asked (its Stop then stops it)."""
+        with self._lock:
+            self._queue = [q for q in self._queue if q.region != region_id]
 
     def rivers_chosen(self) -> bool:
         """Soft banks saved in the Settings: the river masks of each region installed whose mesh
@@ -1072,7 +1185,9 @@ class LiveControl:
         gives way; an install under way keeps its place, and the regions then show Update. False
         when nothing started."""
         self._stop_night_grids()
-        thread = threading.Thread(target=self._rivers, name="live-rivers", daemon=True)
+        thread = threading.Thread(
+            target=self._holding, args=(self._rivers,), name="live-rivers", daemon=True
+        )
         with self._lock:
             if self._install_thread is not None and self._install_thread.is_alive():
                 busy = True
@@ -1126,15 +1241,16 @@ class LiveControl:
     def _deleting(self, region_id: str) -> Iterator[None]:
         """The one rule of a deletion from the disk, a region's and its kept old mesh's alike: not
         while Live streams, nor while the region is being installed (any region, by the night
-        grids' or the river masks' rounds), nor while X-Plane runs, which reads the region's roads,
-        forests and buildings straight from it (:meth:`_may_swap`, ``osxpregions.XPLANE_READS``; a
-        campaign of 2026-11-18 deleted them under a flying X-Plane). Nothing else reads a kept old
-        mesh then, and a start with X-Plane running on a mesh that changed is refused
+        grids' or the river masks' rounds) or waits in the window's line, whose turn would install
+        it again, nor while X-Plane runs, which reads the region's roads, forests and buildings
+        straight from it (:meth:`_may_swap`, ``osxpregions.XPLANE_READS``; a campaign of
+        2026-11-18 deleted them under a flying X-Plane). Nothing else reads a kept old mesh then,
+        and a start with X-Plane running on a mesh that changed is refused
         (``region.pack_to_redo``). One check and one taking, as an install's: the installs' one
         place is held meanwhile where it is free, as the night grids' own download, started from
         the list's read while the region was deleted, wrote half of it back, listed as installed
-        (the review of 2026-11-11). Mesh back to new after, once no region keeps an old mesh
-        (:meth:`_mesh_follows_kept`)."""
+        (the review of 2026-11-11), and given on after (:meth:`_give_place`). Mesh back to new
+        after, once no region keeps an old mesh (:meth:`_mesh_follows_kept`)."""
         self._stop_night_grids()
         with self._lock:
             running = self._install_thread
@@ -1142,9 +1258,12 @@ class LiveControl:
                 running = None
             if self._state != IDLE:
                 raise session.RefusedError("Live is streaming: stop it first")
-            if running is not None and (
-                running in (self._night_thread, self._rivers_thread)  # any region, one by one
-                or (self._installer is not None and self._installer.region.id == region_id)
+            if self._in_line(region_id) or (
+                running is not None
+                and (
+                    running in (self._night_thread, self._rivers_thread)  # any region, one by one
+                    or (self._installer is not None and self._installer.region.id == region_id)
+                )
             ):
                 raise session.RefusedError("this region is being installed: stop that first")
             taken = None if running is not None else threading.current_thread()
@@ -1157,9 +1276,8 @@ class LiveControl:
             self.checks_changed()
             self._mesh_follows_kept()
         finally:
-            with self._lock:
-                if taken is not None and self._install_thread is taken:
-                    self._install_thread = None
+            if taken is not None:
+                self._give_place()  # a click meanwhile waited in line
 
     def _mesh_follows_kept(self) -> None:
         """The Settings' Mesh back to new once no region keeps an old mesh, one still waiting to

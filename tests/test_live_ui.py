@@ -1501,12 +1501,14 @@ def test_the_regions_the_page_lists(home: Path, tmp_path: Path, monkeypatch) -> 
         "rivers_bytes": 0,
         "waiting": False,
         "held": None,
+        "queued": None,
+        "failed": None,
         "whole": False,  # not installed: nothing of before to keep
     }
     c.install_region("eur")
     assert c._installer.overlays  # the pilot takes X-Plane's roads: they come with it
-    with pytest.raises(session.RefusedError):
-        c.install_region("na")  # one at a time
+    c.install_region("na")  # waits in line for its turn
+    assert {r["id"]: r["queued"] for r in c.regions()["list"]} == {"eur": None, "na": 1}
     assert c.regions()["install"]["phase"] == "downloading"
     with pytest.raises(session.RefusedError):
         c.remove_region("eur")  # not while it is installed
@@ -2032,10 +2034,270 @@ async def test_the_regions_api(home: Path, tmp_path: Path) -> None:
         assert [r["id"] for r in got["list"]] == ["eur", "na"]
         started = await client.post("/api/live/regions/eur/install")
         assert started.status_code == 202 and started.json()["install"]["region"] == "eur"
-        assert (await client.post("/api/live/regions/na/install")).status_code == 409
-        await client.post("/api/live/regions/cancel")
+        lined = await client.post("/api/live/regions/na/install")  # in line, not refused
+        assert lined.status_code == 202
+        assert {r["id"]: r["queued"] for r in lined.json()["list"]} == {"eur": None, "na": 1}
+        out = await client.delete("/api/live/regions/na/queued")
+        assert out.status_code == 200 and out.json()["list"][1]["queued"] is None
+        again = await client.delete("/api/live/regions/na/queued")  # not in line: nothing done
+        assert again.status_code == 200 and again.json()["install"]["region"] == "eur"
+        await client.post("/api/live/regions/na/install")
+        stopped = await client.post("/api/live/regions/cancel")  # the install and the line
+        assert [r["queued"] for r in stopped.json()["list"]] == [None, None]
         wait_for(lambda: c.regions()["install"]["phase"] == "cancelled")
+        assert c.regions()["install"]["region"] == "eur"  # North America's never started
+        refused = await client.post("/api/live/regions/atlantis/install")
+        assert refused.status_code == 409  # the click's checks answer at once
         assert (await client.delete("/api/live/regions/eur")).status_code == 409  # not installed
+
+
+class GatedInstaller(FakeInstaller):
+    """An install that ends as its region's gate opens: done, or failed with the error set for its
+    region; each one that ran recorded with the answers it was given."""
+
+    made: ClassVar[list] = []
+    gates: ClassVar[dict[str, threading.Event]] = {}
+    errors: ClassVar[dict[str, str]] = {}
+
+    def run(self) -> None:
+        GatedInstaller.made.append((self.region.id, self.keep_old, self.make_room))
+        gate = GatedInstaller.gates.setdefault(self.region.id, threading.Event())
+        while not gate.wait(0.01):
+            if self.stopped.is_set():
+                self.phase = "cancelled"
+                return
+        self.error = GatedInstaller.errors.get(self.region.id, "")
+        self.phase = "failed" if self.error else "done"
+
+    def snapshot(self) -> dict:
+        return {**super().snapshot(), "error": getattr(self, "error", "")}
+
+
+def open_gate(region_id: str) -> None:
+    GatedInstaller.gates.setdefault(region_id, threading.Event()).set()
+
+
+def line_control(xp: Path) -> LiveControl:
+    """Europe, North and South America to install, each install ending as its gate opens, the
+    host's list read."""
+    from orthostudio.live.osxpregions import OsxpRegion, Zip
+
+    GatedInstaller.made, GatedInstaller.gates, GatedInstaller.errors = [], {}, {}
+    catalog = {
+        r: OsxpRegion(r, "2026-11-22", (Zip(f"{r}/zips/z_osxp_{r}_+45+005.zip", 10, h * 64, 17),))
+        for r, h in (("eur", "a"), ("na", "b"), ("sa", "c"))
+    }
+    c = LiveControl(
+        checks=checks(xplane=str(xp)),
+        settings=lambda: LiveSettings(),
+        echo=lambda _: None,
+        catalog=lambda root: catalog,
+        installer=GatedInstaller,
+    )
+    c.regions(fetch=True)
+    wait_for(lambda: c._catalog is not None)
+    return c
+
+
+def queued(c: LiveControl) -> dict[str, int | None]:
+    return {r["id"]: r["queued"] for r in c.regions()["list"]}
+
+
+def test_a_click_while_an_install_runs_waits_in_line_with_its_answers(
+    home: Path, tmp_path: Path
+) -> None:
+    """Install or Update while another install runs puts the region in line, with the answers of
+    its click (discussion 47: four updates, a click each at the end of the one before). Each
+    starts as the one before ends, done or failed, in the order clicked; one in line or under way
+    is not put in it twice; one that failed says why on its row once the next took the place."""
+    c = line_control(tmp_path / "X-Plane 12")
+    c.install_region("eur")
+    c.install_region("sa", keep_old=True)
+    c.install_region("na", make_room=True)
+    c.install_region("sa", make_room=True)  # in line already: nothing more, its answers kept
+    c.install_region("eur")  # under way: nothing more
+    assert queued(c) == {"eur": None, "na": 2, "sa": 1}
+    assert c.installing() and c.regions()["install"]["region"] == "eur"
+    GatedInstaller.errors["sa"] = "no room on the disk"
+    open_gate("eur")
+    wait_for(lambda: c._installer.region.id == "sa")
+    assert queued(c) == {"eur": None, "na": 1, "sa": None}
+    open_gate("sa")  # it fails: the line goes on
+    wait_for(lambda: c._installer.region.id == "na")
+    listed = {r["id"]: r for r in c.regions()["list"]}
+    assert listed["sa"]["failed"] == "no room on the disk"  # its row says it, na's line running
+    assert listed["eur"]["failed"] is None and c.regions()["install"]["region"] == "na"
+    open_gate("na")
+    wait_for(lambda: not c.installing())
+    assert GatedInstaller.made == [("eur", False, False), ("sa", True, False), ("na", False, True)]
+    GatedInstaller.errors.clear()
+    c.install_region("sa")  # clicked again: its failure said no more
+    assert {r["id"]: r for r in c.regions()["list"]}["sa"]["failed"] is None
+    wait_for(lambda: not c.installing())
+
+
+def test_a_region_refused_at_its_turn_says_why_and_the_line_goes_on(
+    home: Path, tmp_path: Path
+) -> None:
+    """The checks of a click are made again at its turn. Live streaming by then, the update of
+    North America, installed, is refused, said on its row as an install's failure, and South
+    America, new, installs all the same (a region new while Live streams is used from its next
+    start)."""
+    c = line_control(tmp_path / "X-Plane 12")
+    put_region(c._catalog["na"])
+    c.install_region("eur")
+    c.install_region("na")
+    c.install_region("sa")
+    c._state = STREAMING  # as if Live had started meanwhile
+    open_gate("eur")
+    wait_for(lambda: c._installer.region.id == "sa")
+    listed = {r["id"]: r for r in c.regions()["list"]}
+    assert listed["na"]["failed"] == "Live is streaming over this region: stop it first"
+    assert listed["na"]["queued"] is None and listed["sa"]["queued"] is None
+    assert [made[0] for made in GatedInstaller.made] == ["eur", "sa"]  # na's never ran
+    assert any("install of na not started" in line["text"] for line in c.log_after(0)["lines"])
+    c._state = IDLE
+    c.cancel_install()
+    wait_for(lambda: not c.installing())
+
+
+def test_stop_empties_the_line_and_a_region_comes_out_of_it_alone(
+    home: Path, tmp_path: Path
+) -> None:
+    """The window's Stop stops the install under way and empties the line. A region's own button
+    takes it alone out of the line, nothing done for one not in it (its turn may have just come).
+    A region in line is not deleted: its turn would install it again."""
+    c = line_control(tmp_path / "X-Plane 12")
+    put_region(c._catalog["na"])
+    c.install_region("eur")
+    c.install_region("na")
+    c.install_region("sa")
+    with pytest.raises(session.RefusedError, match="being installed"):
+        c.remove_region("na")
+    c.unqueue_region("na")
+    c.unqueue_region("na")  # not in line any more: nothing done
+    c.unqueue_region("eur")  # under way: its Stop stops it
+    assert queued(c) == {"eur": None, "na": None, "sa": 1}
+    open_gate("eur")
+    wait_for(lambda: c._installer.region.id == "sa")
+    c.install_region("na")
+    assert queued(c)["na"] == 1
+    c.cancel_install()
+    assert queued(c) == {"eur": None, "na": None, "sa": None}
+    wait_for(lambda: not c.installing())
+    assert [made[0] for made in GatedInstaller.made] == ["eur", "sa"]
+    assert c.regions()["install"] == {
+        "region": "sa",
+        "phase": "cancelled",
+        "done_bytes": 5,
+        "total_bytes": 10,
+        "error": "",
+    }
+
+
+def test_a_click_during_a_deletion_starts_once_it_is_done(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A deletion holds the installs' place: a click meanwhile waits in line, and starts as the
+    deletion gives the place back."""
+    from orthostudio.live import osxpregions
+
+    monkeypatch.setattr(control_module, "xplane_running", lambda: False)
+    c = line_control(tmp_path / "X-Plane 12")
+    put_region(c._catalog["na"])
+    removing = osxpregions.remove
+
+    def remove(*args, **kwargs):
+        c.install_region("eur")
+        assert queued(c)["eur"] == 1 and GatedInstaller.made == []
+        return removing(*args, **kwargs)
+
+    monkeypatch.setattr(osxpregions, "remove", remove)
+    c.remove_region("na")
+    assert c.installing() and c._installer.region.id == "eur" and queued(c)["eur"] is None
+    c.cancel_install()
+    wait_for(lambda: not c.installing())
+
+
+@pytest.mark.skipif(NODE is None, reason="needs node")
+def test_update_all_puts_the_updates_to_start_in_line_asking_once() -> None:
+    """« Update all » takes the regions installed whose row offers Update now, neither running,
+    in line nor ready for Live's next start, in the list's order, and shows for two or more. It
+    asks « Keep the old mesh? » once, in words for several, the room never: each install checks it
+    as it starts. A region whose install failed in line opens the list, in the warning's colour."""
+    six = ["eur", "na", "sa", "afr", "asi", "aus_pac"]
+    ours = [{"id": r} for r in six[:5]]
+    listed = [
+        {"id": "eur", "installed": True, "changed": 2, "changed_bytes": 9e8},
+        {"id": "na", "installed": True, "changed": 1, "changed_bytes": 9e8, "queued": 1},
+        {"id": "sa", "installed": True, "changed": 1, "changed_bytes": 9e8},
+        {"id": "afr", "installed": True, "changed": 1, "changed_bytes": 0, "waiting": True},
+        {"id": "asi", "installed": True, "changed": 3, "changed_bytes": 9e8},
+        {"id": "aus_pac", "installed": False, "changed": 0, "download": 9e8},
+    ]
+    newer = [*listed[:3], {**listed[3], "changed_bytes": 5e8}, *listed[4:]]  # one more to fetch
+    cases = [
+        {"ours": ours, "list": listed, "install": {"region": "sa", "phase": "downloading"}},
+        {"ours": ours, "list": listed, "install": {"region": "sa", "phase": "failed"}},
+        {"ours": ours, "list": newer, "install": {"region": "sa", "phase": "downloading"}},
+        {"ours": ours[:1], "list": listed[:1], "install": None},
+    ]
+    keys = [
+        "regions.update_all",
+        "regions.queued_next",
+        "regions.queued",
+        "regions.unqueue",
+        "regions.cancel_all",
+        "regions.keep_all_title",
+        "regions.keep_all_text_size",
+        "regions.keep_all_text",
+        "regions.keep_all_replaces",
+        "regions.keep_all_old_setting",
+    ]
+    script = (
+        f"const live = await import({json.dumps((UI_DIR / 'live.js').as_uri())});"
+        f"const s = await import({json.dumps((UI_DIR / 'strings.js').as_uri())});"
+        f"const cases = {json.dumps(cases)}; const keys = {json.dumps(keys)}; const out = {{}};"
+        "out.ids = cases.map(live.updateAllIds);"
+        "for (const lang of ['en', 'fr']) { s.setLanguage(lang);"
+        " out[lang] = Object.fromEntries(keys.map((k) => [k, s.t(k, { n: 2, gb: '12.5' })])); }"
+        "console.log(JSON.stringify(out));"
+    )
+    out = subprocess.run(
+        [NODE or "node", "--input-type=module", "-e", script],
+        capture_output=True,
+        encoding="utf-8",
+        check=True,
+    )
+    said = json.loads(out.stdout)
+    assert said["ids"] == [["eur", "asi"], ["eur", "sa", "asi"], ["eur", "afr", "asi"], ["eur"]]
+    en, fr = said["en"], said["fr"]
+    assert (en["regions.update_all"], fr["regions.update_all"]) == (
+        "Update all",
+        "Tout mettre à jour",
+    )
+    assert (en["regions.queued"], fr["regions.queued"]) == (
+        "Waiting: 2 ahead of it",
+        "En attente : 2 avant elle",
+    )
+    assert en["regions.keep_all_title"] == "Keep the old meshes?"
+    assert fr["regions.keep_all_text_size"] == (
+        "Ils restent sur le disque (12.5 Go) et vous pourrez y revenir."
+    )
+    for lang in (en, fr):
+        assert all(lang[k] != k and "{" not in lang[k] for k in keys), lang
+    js = (UI_DIR / "live.js").read_text(encoding="utf-8")
+    body = js[js.index("async function updateAll(") :]
+    body = body[: body.index("\n}")]
+    assert body.count("askKeep(") == 1  # one question for all
+    assert "make_room: false" in body and "/room" not in body  # the room never asked up front
+    html = (UI_DIR / "index.html").read_text(encoding="utf-8")
+    regions = html[html.index('id="regions-body"') : html.index('id="regions-ours"')]
+    assert 'id="regions-update-all" data-i18n="regions.update_all"' in regions
+    failed = [{"id": "eur", "installed": True, "changed": 1, "failed": "no room on the disk"}]
+    summary = _folds([{"ours": ours[:1], "list": failed, "install": None}], [], [])["en"]
+    assert summary["regions"][0]["needs"] == ["update:eur", "failed:eur"]
+    assert summary["regions"][0]["badges"][0]["kind"] == "warn"
 
 
 @pytest.mark.anyio
@@ -2261,17 +2523,18 @@ def test_soft_banks_saved_waits_for_the_install_under_way_and_stops_whole(home: 
     first = c._installer
     assert not c.rivers_chosen()
     c.cancel_install()
-    wait_for(lambda: not c._install_thread.is_alive())
+    wait_for(lambda: not c.installing())
     assert c.rivers_chosen()
     wait_for(lambda: c._installer is not first)
     assert c._installer.region.id == "eur" and not c._installer.overlays
     assert c.busy()  # the app keeps Live's process for it
-    with pytest.raises(session.RefusedError):
-        c.install_region("na")  # one at a time
+    c.install_region("na")  # in line behind the river masks
+    assert {r["id"]: r["queued"] for r in c.regions()["list"]}["na"] == 1
     with pytest.raises(session.RefusedError):
         c.remove_region("na")  # its turn may come
-    c.cancel_install()
+    c.cancel_install()  # the round, and the line with it
     wait_for(lambda: not c._rivers_thread.is_alive())
+    assert not c.installing()
     assert c._installer.region.id == "eur"  # North America's never started
 
 
