@@ -103,3 +103,133 @@ def test_a_quiet_time_is_not_a_dead_connection(monkeypatch: pytest.MonkeyPatch) 
         assert d.renewed == 0
     finally:
         d.close()
+
+
+# --- a chosen source that answers nothing at all, said; downloads failing now
+
+
+class Server:
+    """The chosen source's server as one session: answering, or refusing every connection."""
+
+    def __init__(self) -> None:
+        self.up = True
+
+    async def get(self, url, headers=None):
+        if not self.up:
+            raise ConnectionError("curl: (7) Failed to connect: Connection refused")
+        return Answer()
+
+    async def close(self) -> None:
+        pass
+
+
+class OnServer(Downloader):
+    server: ClassVar[Server]
+
+    def _new_session(self):
+        return OnServer.server
+
+
+def _source():
+    from orthostudio.live.providers import Provider
+
+    return Provider(code="SRC", name="Source", url_template="http://source/{zoom}/{x}/{y}",
+                    max_zl=19)  # fmt: skip
+
+
+def _answers():
+    """on_piece, and ``wait(n)``: the next n answers it got."""
+    import queue
+
+    got: queue.Queue = queue.Queue()
+
+    def wait(n: int) -> list:
+        return [got.get(timeout=10) for _ in range(n)]
+
+    return (lambda key, status, body: got.put((key, status, body))), wait
+
+
+def _until(test, timeout: float = 5.0) -> bool:
+    end = time.monotonic() + timeout
+    while not test() and time.monotonic() < end:
+        time.sleep(0.02)
+    return test()
+
+
+def test_a_source_that_answers_nothing_is_said_until_it_answers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """REFUSED_IN_A_ROW requests in a row refused and no answer for DEAD_S: the chosen source
+    answers nothing, said once in the log and to the window, until it answers again."""
+    monkeypatch.setattr(downloader_module, "DEAD_S", 0.5)
+    monkeypatch.setattr(downloader_module, "WATCH_S", 0.05)
+    monkeypatch.setattr(downloader_module, "REFUSED_IN_A_ROW", 4)
+    OnServer.server = server = Server()
+    server.up = False
+    lines: list[str] = []
+    on_piece, wait = _answers()
+    d = OnServer(_source(), on_piece, max_in_flight=8, attempts=1, fallback=None, log=lines.append)
+    try:
+        for x in range(6):
+            d.submit((16, x, 7), float(x))
+        wait(6)
+        assert _until(lambda: d.unanswered() is not None)
+        assert d.unanswered() == {"source": "Source"}
+        said = [line for line in lines if "does not answer" in line]
+        assert len(said) == 1 and "curl: (7)" in said[0]
+        assert "stop Live and choose another source" in said[0]
+        server.up = True
+        d.submit((16, 9, 7), 0.0)
+        assert wait(1)[0][1] == IMAGE
+        assert _until(lambda: d.unanswered() is None)
+        assert any(line == "  Source answers again" for line in lines)
+    finally:
+        d.close()
+
+
+def test_a_moment_the_line_stops_is_not_said(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Many requests failing in a row, then an answer within DEAD_S: nothing said."""
+    monkeypatch.setattr(downloader_module, "DEAD_S", 2.0)
+    monkeypatch.setattr(downloader_module, "WATCH_S", 0.05)
+    OnServer.server = server = Server()
+    server.up = False
+    lines: list[str] = []
+    on_piece, wait = _answers()
+    d = OnServer(_source(), on_piece, max_in_flight=64, attempts=1, fallback=None, log=lines.append)
+    try:
+        n = downloader_module.REFUSED_IN_A_ROW + 8
+        for x in range(n):
+            d.submit((16, x, 7), float(x))
+        wait(n)
+        server.up = True
+        d.submit((16, 100, 7), 0.0)
+        assert wait(1)[0][1] == IMAGE
+        time.sleep(0.3)
+        assert d.unanswered() is None
+        assert not [line for line in lines if "does not answer" in line]
+    finally:
+        d.close()
+
+
+def test_downloads_failing_now_whatever_came_before(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Failing: a piece failed within FAILING_S and none came in it, whatever came before (13
+    pieces early in a flight, then 12,928 failed, and the window never said it)."""
+    monkeypatch.setattr(downloader_module, "FAILING_S", 0.3)
+    OnServer.server = server = Server()
+    on_piece, wait = _answers()
+    d = OnServer(_source(), on_piece, max_in_flight=2, attempts=1, fallback=None)
+    try:
+        assert not d.failing()
+        d.submit((16, 1, 7), 0.0)
+        wait(1)
+        server.up = False
+        time.sleep(0.35)  # what came is older than FAILING_S
+        d.submit((16, 2, 7), 0.0)
+        wait(1)
+        assert d.downloaded == 1 and d.failing()
+        server.up = True
+        d.submit((16, 3, 7), 0.0)
+        wait(1)
+        assert not d.failing()
+    finally:
+        d.close()

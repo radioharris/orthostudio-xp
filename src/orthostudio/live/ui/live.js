@@ -250,10 +250,10 @@ function drawState(status) {
   const error = status.state === "idle" && status.error;
   $("state-error").hidden = !error;
   $("state-error").textContent = error ? t("state.error", { error: status.error }) : "";
-  const refused = refusedText(status);
-  $("source-refused").hidden = !refused;
+  const trouble = sourceText(status);
+  $("source-trouble").hidden = !trouble;
   // written when it changes only: an alert is read aloud again each time it is written
-  if ($("source-refused").textContent !== refused) $("source-refused").textContent = refused;
+  if ($("source-trouble").textContent !== trouble) $("source-trouble").textContent = trouble;
 
   const { state, checks } = status;
   const idle = state === "idle";
@@ -280,11 +280,15 @@ function drawState(status) {
   $("departure-btn").disabled = !(state === "streaming" || (idle && !blocking(checks)));
 }
 
-/** While Live runs, the sources whose server refuses this computer (Downloader.refusing), in
- * OrthoStudio XP's words for its map (map.base_refused) and what to do with Live; "" otherwise. */
-export function refusedText(status) {
-  const names = status.state === "streaming" ? status.stream?.streamer?.refused_by || [] : [];
-  return names.length ? t("source.refused", { provider: names.join(", ") }) : "";
+/** While Live runs, what goes wrong with the photos' sources, and what to do: the sources whose
+ * server refuses this computer (Downloader.refusing), in OrthoStudio XP's words for its map
+ * (map.base_refused), or the chosen source answering nothing at all (Downloader.unanswered); ""
+ * otherwise. */
+export function sourceText(status) {
+  const s = status.state === "streaming" ? status.stream?.streamer : null;
+  const refused = s?.refused_by || [];
+  if (refused.length) return t("source.refused", { provider: refused.join(", ") });
+  return s?.unanswered ? t("source.silent", { provider: s.unanswered.source }) : "";
 }
 
 let noticeDrawn = ""; // what the flight's notice says
@@ -378,7 +382,7 @@ export function buildView(status) {
   const starting = Boolean(stream.start && !stream.start.ready);
   let state = [t("build.state_nothing"), ""];
   if (s.refused_by?.length) state = [t("build.state_refused"), "fail"]; // said under the source
-  else if (s.failed && !s.downloaded) state = [t("build.state_failed"), "fail"];
+  else if (s.failing || s.unanswered) state = [t("build.state_failed"), "fail"]; // the same
   else if (s.urgent && !starting) state = [t("build.state_late", { n: number(s.urgent) }), "warn"];
   else if (queued || s.building) state = [t("build.state_building"), "running"];
   else if (built) state = [t("build.state_done"), "ok"];

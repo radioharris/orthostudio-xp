@@ -1925,9 +1925,12 @@ class Streamer:
             "downloaded_bytes": getattr(dl, "bytes", 0),
             "from_cache": self.from_cache,
             "failed": getattr(dl, "failed", 0),
-            # the sources whose server refuses this computer (Downloader.refusing): the window
-            # says so
+            # the sources whose server refuses this computer (Downloader.refusing), the chosen one
+            # while it answers nothing (unanswered), and whether downloads fail now (failing):
+            # the window says so
             "refused_by": dl.refusing() if hasattr(dl, "refusing") else [],
+            "unanswered": dl.unanswered() if hasattr(dl, "unanswered") else None,
+            "failing": dl.failing() if hasattr(dl, "failing") else False,
             "disk_bytes": self.disk_used(built),
             "disk_budget": self.texture_budget(),
             "read_early": self.read_early,

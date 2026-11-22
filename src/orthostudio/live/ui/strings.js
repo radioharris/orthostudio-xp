@@ -377,6 +377,7 @@ export const STRINGS = {
     "source.fallback": "It covers one country only ({country}): elsewhere, Live takes Bing Maps.",
     "source.low_zoom": "It stops at zoom {zl}: up close, the ortho is blurrier.",
     "source.refused": "{provider} refuses your connection (access denied): stop Live and choose another source meanwhile.",
+    "source.silent": "{provider} does not answer: if your internet connection works, stop Live and choose another source.",
 
     "zoom.max": "Zoom",
     "zoom.max_help": "Away from airports. The package's zoom is 16.",
@@ -927,6 +928,7 @@ export const STRINGS = {
     "source.fallback": "Elle ne couvre qu'un pays ({country}) : ailleurs, Live prend Bing Maps.",
     "source.low_zoom": "Elle s'arrête au zoom {zl} : de près, l'ortho est plus floue.",
     "source.refused": "{provider} refuse votre connexion (accès refusé) : arrêtez Live et choisissez une autre source en attendant.",
+    "source.silent": "{provider} ne répond pas : si votre connexion internet fonctionne, arrêtez Live et choisissez une autre source.",
 
     "zoom.max": "Zoom",
     "zoom.max_help": "Loin des aéroports. Le zoom du package est 16.",

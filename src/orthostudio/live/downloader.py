@@ -13,7 +13,8 @@ A 429 or 503 pauses every request to the provider for its Retry-After (5 s when 
 transport errors and other 5xx are retried after 0.5, 1, 2 s; "no imagery here" (the provider's
 placeholder answer, 204 or 404) is reported as such, and so is a piece that failed every attempt.
 A source whose server answers nothing but 403 refuses this computer (:meth:`Downloader.refusing`),
-which the Live window and the log say.
+which the Live window and the log say; so is a chosen source that answers nothing at all
+(:meth:`Downloader.unanswered`), and downloads failing now (:meth:`Downloader.failing`).
 
 A piece not there after HEDGE_S is asked of another of the provider's servers as well, and the first
 good answer wins. Otherwise the last pieces of a start can hold X-Plane for half a minute: once, two
@@ -48,10 +49,12 @@ FAILED = 3
 HEDGE_S = 2.0
 # a source's server answering 403 this many times in a row refuses this computer (Esri's edge
 # answered « Access Denied » to a user's address, 2026-10-07); a 403 now and then among its images
-# is a piece it lacks
+# is a piece it lacks. As many requests in a row answered nothing or 403, and no other answer for
+# DEAD_S: the chosen source answers nothing at all (Downloader._silent)
 REFUSED_IN_A_ROW = 32
 DEAD_S = 20.0  # requests on their way and no answer for this long: the connections are dead
 WATCH_S = 2.0  # how often that is looked at
+FAILING_S = 60.0  # a piece failed within this and none came: downloads fail (Downloader.failing)
 
 
 class Downloader:
@@ -98,6 +101,12 @@ class Downloader:
         self._last_answer = self._busy_since = time.monotonic()
         self.renewed = 0
         self._renewed_said = 0.0
+        # the chosen source: its requests in a row answered nothing or 403, its last other answer
+        # (or first ask), and since when it answers nothing at all (_silent, said by _watch)
+        self._unanswered = 0
+        self._heard: float | None = None
+        self.silent_since: float | None = None
+        self._came_at = self._failed_at = -float("inf")  # a piece downloaded, one failed (failing)
         # a piece of this priority waits while it says so: every one while X-Plane loads scenery,
         # those ahead of what it shows while its workers are all busy (Streamer.holds)
         self.hold: Callable[[float], bool] = lambda priority: False
@@ -125,6 +134,18 @@ class Downloader:
         and no other answer since. The Live window says so, until the server answers otherwise:
         before, a refusal read as « is the internet there? » in the log (2026-10-08)."""
         return [name for name, n in tuple(self._refusals.items()) if n >= REFUSED_IN_A_ROW]
+
+    def unanswered(self) -> dict | None:
+        """The chosen source while it answers nothing at all (:meth:`_silent`, as :meth:`_watch`
+        last found it), for the Live window: {"source": its name}."""
+        return None if self.silent_since is None else {"source": self.p.name or self.p.code}
+
+    def failing(self) -> bool:
+        """Whether downloads fail now: a piece failed every try within FAILING_S and none came in
+        that time. Live's window said so only when nothing had ever come: 13 pieces early in a
+        flight, then 12,928 failed, and it never did (2026-11-22)."""
+        now = time.monotonic()
+        return now - self._failed_at < FAILING_S <= now - self._came_at
 
     def close(self) -> None:
         if self._thread.is_alive():
@@ -175,6 +196,7 @@ class Downloader:
         while True:
             await asyncio.sleep(WATCH_S)
             now = time.monotonic()
+            self._follow(now)
             if self.in_flight == 0 or now - max(self._last_answer, self._busy_since) < DEAD_S:
                 continue
             old, self._session = self._session, self._new_session()
@@ -190,6 +212,30 @@ class Downloader:
             with contextlib.suppress(Exception):
                 await old.close()
 
+    def _silent(self, now: float) -> bool:
+        """Whether the chosen source answers nothing at all: REFUSED_IN_A_ROW requests in a row
+        timed out, refused or answered 403, and no other answer from it for DEAD_S. A piece slow
+        or failing while others come, or a moment the line stops, is not."""
+        heard = self._heard
+        return self._unanswered >= REFUSED_IN_A_ROW and heard is not None and now - heard >= DEAD_S
+
+    def _follow(self, now: float) -> None:
+        """The chosen source answering nothing, or answering again, said in the log once each (a
+        refusal is said as it comes, :meth:`_answered`)."""
+        silent, name = self._silent(now), self.p.name or self.p.code
+        if silent == (self.silent_since is not None):
+            return
+        self.silent_since = now if silent else None
+        if self.log is None:
+            return
+        if not silent:
+            self.log(f"  {name} answers again")
+        elif name not in self.refusing():
+            self.log(
+                f"  {name} does not answer ({self.last_error or 'no answer'}): if the internet "
+                "works, stop Live and choose another source"
+            )
+
     async def _worker(self) -> None:
         while True:
             priority, seq, key = await self._queue.get()
@@ -203,8 +249,7 @@ class Downloader:
                 raise
             except Exception as e:  # not the network's (handled below): the piece fails, the
                 # worker goes on; it died with it until 2026-09-30, one request fewer each time
-                self.failed += 1
-                status, body = FAILED, None
+                status, body = self._failed_piece()
                 said = f"{type(e).__name__}: {e}"
                 if self.log is not None and said not in self._said:
                     self._said.add(said)
@@ -228,17 +273,26 @@ class Downloader:
         if self.in_flight == 0:
             self._busy_since = time.monotonic()
         self.in_flight += 1
+        chosen = p is self.p
+        if chosen and self._heard is None:
+            self._heard = time.monotonic()  # its first ask
         try:
             r = await self._session.get(url, headers=dict(p.headers))
-            self._last_answer = time.monotonic()
-            return r
         except asyncio.CancelledError:
             raise
         except Exception as e:  # timeout, refused connection, reset...
+            if chosen:
+                self._unanswered += 1
             self._failed_request(e)
             return None
         finally:
             self.in_flight -= 1
+        self._last_answer = time.monotonic()
+        if chosen and r.status_code == 403:
+            self._unanswered += 1
+        elif chosen:
+            self._heard, self._unanswered = self._last_answer, 0
+        return r
 
     def _failed_request(self, e: Exception) -> None:
         """A request that failed, in the log the first time a request fails that way: on the
@@ -326,6 +380,7 @@ class Downloader:
                     self.downloaded += 1
                     self.bytes += len(r.content)
                     self.last_error = ""
+                    self._came_at = time.monotonic()
                     return IMAGE, r.content
                 if r.status_code in (204, 404):
                     self.no_imagery += 1
@@ -338,5 +393,10 @@ class Downloader:
                     )
             self.retries += 1
             await asyncio.sleep(0.5 * 2**attempt)
+        return self._failed_piece()
+
+    def _failed_piece(self) -> tuple[int, None]:
+        """A piece that failed every try, counted."""
         self.failed += 1
+        self._failed_at = time.monotonic()
         return FAILED, None
