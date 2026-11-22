@@ -1133,14 +1133,12 @@ export function updateAllIds(regions) {
   });
 }
 
-/** What « Update all » sends, region by region: each one's ordinary click, as asked on its
- * update (r.whole, the server refusing it where that changed since), the keep answer for those
- * whose update replaces the mesh, no room made first. [{id, body}] */
-export function updateAllClicks(regions, keepOld) {
-  return updateAllIds(regions).map((id) => {
-    const whole = Boolean((regions?.list || []).find((r) => r.id === id)?.whole);
-    return { id, body: { whole, keep_old: keepOld && whole, make_room: false } };
-  });
+/** What « Update all » sends for the regions it asked on ([{id, whole}], updateAll), region by
+ * region: each one's ordinary click, as asked on its update (the server refusing it where that
+ * changed since), the keep answer for those whose update replaces the mesh, no room made first.
+ * [{id, body}] */
+export function updateAllClicks(rows, keepOld) {
+  return rows.map(({ id, whole }) => ({ id, body: { whole, keep_old: keepOld && whole, make_room: false } }));
 }
 
 /** A region's question (the region-ask <dialog>, :func:`ask`): its title, its lines and its two
@@ -1176,9 +1174,15 @@ async function updateRegion(id, button) {
   }
 }
 
+/** A region as the host's list gives it to the page ({} where it is not there): what its clicks
+ * send is what its row showed. */
+function listedRegion(id, regions = last?.regions) {
+  return (regions?.list || []).find((x) => x.id === id) || {};
+}
+
 async function updateAsked(id, button) {
   const regions = last?.regions || {};
-  const r = (regions.list || []).find((x) => x.id === id) || {};
+  const r = listedRegion(id, regions);
   const mine = (regions.ours || []).find((x) => x.id === id) || {};
   const of = t(`region_of.${id}`);
   let makeRoom = false;
@@ -1234,13 +1238,14 @@ function askKeep(whole, makeRoom) {
   const one = whole.length === 1;
   const sizes = whole.map((w) => w.mine.size || 0);
   const size = sizes.every(Boolean) ? sizes.reduce((sum, n) => sum + n, 0) : 0;
-  const lines = [size ? t(one ? "regions.keep_text_size" : "regions.keep_all_text_size", { gb: gb(size) })
-    : t(one ? "regions.keep_text" : "regions.keep_all_text")];
+  const sized = { gb: gb(size) };
+  const lines = [size ? (one ? t("regions.keep_text_size", sized) : t("regions.keep_all_text_size", sized))
+    : one ? t("regions.keep_text") : t("regions.keep_all_text")];
   if (!makeRoom && whole.some((w) => w.r.kept)) { // deleted already otherwise
-    lines.push(t(one ? "regions.keep_replaces" : "regions.keep_all_replaces"));
+    lines.push(one ? t("regions.keep_replaces") : t("regions.keep_all_replaces"));
   }
   if (last?.settings?.mesh === "old") { // kept, it is flown
-    lines.push(t(one ? "regions.keep_old_setting" : "regions.keep_all_old_setting"));
+    lines.push(one ? t("regions.keep_old_setting") : t("regions.keep_all_old_setting"));
   }
   const title = one ? t("regions.keep_title", { of: t(`region_of.${whole[0].id}`) }) : t("regions.keep_all_title");
   return askRegion({ title, lines, yes: t("regions.keep_yes"), no: t("regions.keep_no") });
@@ -1256,9 +1261,12 @@ async function updateAll() {
   if (askingUpdate) return;
   askingUpdate = true;
   try {
-    const regions = last?.regions || {}; // as the question is asked: what its clicks send
-    const whole = updateAllIds(regions).map((id) => ({ id, r: (regions.list || []).find((x) => x.id === id),
-      mine: (regions.ours || []).find((x) => x.id === id) || {} })).filter((row) => row.r.whole);
+    const regions = last?.regions || {};
+    const rows = updateAllIds(regions).map((id) => { // as the question is asked: what its clicks send
+      const r = listedRegion(id, regions);
+      return { id, r, mine: (regions.ours || []).find((x) => x.id === id) || {}, whole: Boolean(r.whole) };
+    });
+    const whole = rows.filter((row) => row.whole);
     let keepOld = false;
     if (whole.length) {
       const answer = await askKeep(whole, false);
@@ -1268,7 +1276,7 @@ async function updateAll() {
     regionsError(null);
     let refused = null;
     let got = null;
-    for (const { id, body } of updateAllClicks(regions, keepOld)) {
+    for (const { id, body } of updateAllClicks(rows, keepOld)) {
       try {
         got = await api(`regions/${id}/install`, { method: "POST", body });
       } catch (error) {
@@ -1294,7 +1302,7 @@ async function removeKept(id) {
 function regionAction(id, act) {
   if (act === "cancel") return () => regionAct("regions/cancel");
   if (act === "unqueue") return () => regionAct(`regions/${id}/queued`, "DELETE");
-  if (act === "install") return () => regionAct(`regions/${id}/install`, "POST", { whole: false }); // nothing to replace
+  if (act === "install") return () => regionAct(`regions/${id}/install`, "POST", { whole: Boolean(listedRegion(id).whole) });
   if (act === "update") return (ev) => updateRegion(id, ev.currentTarget);
   if (act === "remove_kept") return () => removeKept(id);
   if (act === "remove") {

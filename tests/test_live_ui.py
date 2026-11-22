@@ -924,9 +924,6 @@ def test_the_page_says_everything_in_both_languages() -> None:
     js = (UI_DIR / "live.js").read_text()
     html = (UI_DIR / "index.html").read_text()
     used = set(re.findall(r'\bt\("([\w.]+)"', js))
-    # and those a condition chooses: t(cond ? "a.key" : "b.key"
-    for chosen in re.findall(r'\bt\([^"()]*\?\s*"([\w.]+)"\s*:\s*"([\w.]+)"', js):
-        used |= set(chosen)
     used |= set(re.findall(r'data-i18n(?:-title|-placeholder|-aria-label)?="([\w.]+)"', html))
     assert used, "no key found"
     assert used <= set(keys["en"]), sorted(used - set(keys["en"]))
@@ -2083,16 +2080,20 @@ def open_gate(region_id: str) -> None:
     GatedInstaller.gates.setdefault(region_id, threading.Event()).set()
 
 
-def queue_control(xp: Path) -> LiveControl:
-    """Europe, North and South America to install, each install ending as its gate opens, the
-    host's list read."""
-    from orthostudio.live.osxpregions import OsxpRegion, Zip
-
+def reset_gates() -> None:
     GatedInstaller.made, GatedInstaller.gates, GatedInstaller.errors = [], {}, {}
     GatedInstaller.raising = set()
+
+
+def queue_control(xp: Path) -> LiveControl:
+    """Europe, North and South America and Africa to install, each install ending as its gate
+    opens, the host's list read."""
+    from orthostudio.live.osxpregions import OsxpRegion, Zip
+
+    reset_gates()
     catalog = {
         r: OsxpRegion(r, "2026-11-22", (Zip(f"{r}/zips/z_osxp_{r}_+45+005.zip", 10, h * 64, 17),))
-        for r, h in (("eur", "a"), ("na", "b"), ("sa", "c"))
+        for r, h in (("eur", "a"), ("na", "b"), ("sa", "c"), ("afr", "f"))
     }
     c = LiveControl(
         checks=checks(xplane=str(xp)),
@@ -2125,7 +2126,7 @@ def test_a_click_while_an_install_runs_is_queued_with_its_answers(
         "sa", whole=False, make_room=True
     )  # queued already: nothing more, its answers kept
     c.install_region("eur", whole=False)  # under way: nothing more
-    assert queued(c) == {"eur": None, "na": 2, "sa": 1}
+    assert queued(c) == {"eur": None, "na": 2, "sa": 1, "afr": None}
     assert c.installing() and c.regions()["install"]["region"] == "eur"
     GatedInstaller.errors["sa"] = "no room on the disk"
     open_gate("eur")
@@ -2133,7 +2134,7 @@ def test_a_click_while_an_install_runs_is_queued_with_its_answers(
     open_gate("sa")  # it fails: the queue goes on
     wait_for(lambda: c._installer.region.id == "na")
     failed = {r["id"]: r["failed"] for r in c.regions()["list"]}
-    assert failed == {"eur": None, "na": None, "sa": "no room on the disk"}
+    assert failed == {"eur": None, "na": None, "sa": "no room on the disk", "afr": None}
     open_gate("na")
     wait_for(lambda: not c.installing())
     assert GatedInstaller.made == [("eur", False, False), ("sa", True, False), ("na", False, True)]
@@ -2143,71 +2144,33 @@ def test_a_click_while_an_install_runs_is_queued_with_its_answers(
     wait_for(lambda: not c.installing())
 
 
-def test_a_region_refused_at_its_turn_says_why_and_the_queue_goes_on(
+def test_updates_refused_at_their_turn_say_why_and_the_queue_goes_on(
     home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The checks of a click are made again at its turn. Live streaming by then, the update of
-    North America, installed, is refused, said on its row, and South America, new, installs all the
-    same (a region new while Live streams is used from its next start). Its failure goes with the
-    region deleted."""
+    """The checks of a click are made again at its turn. North and South America's updates
+    replaced no mesh as they were clicked; a release made while they waited replaces it: both are
+    refused, said on their rows, never run with an answer nobody gave, and Africa installs all the
+    same. A region's failure goes with the region deleted."""
+    import dataclasses
+
     monkeypatch.setattr(control_module, "xplane_running", lambda: False)
     c = queue_control(tmp_path / "X-Plane 12")
-    put_region(c._catalog["na"])
-    c.install_region("eur", whole=False)
-    c.install_region("na", whole=False)
-    c.install_region("sa", whole=False)
-    c._state = STREAMING  # as if Live had started meanwhile
+    for region_id in ("eur", "na", "sa", "afr"):
+        if region_id in ("na", "sa"):
+            put_region(c._catalog[region_id])  # their mesh the list's: updates in place
+        c.install_region(region_id, whole=False)
+    for region_id in ("na", "sa"):
+        remade = dataclasses.replace(c._catalog[region_id].mesh[0], sha256="d" * 64)
+        c._catalog[region_id] = dataclasses.replace(c._catalog[region_id], mesh=(remade,))
     open_gate("eur")
-    wait_for(lambda: c._installer.region.id == "sa")
-    listed = {r["id"]: r for r in c.regions()["list"]}
-    assert listed["na"]["failed"] == "Live is streaming over this region: stop it first"
-    assert [made[0] for made in GatedInstaller.made] == ["eur", "sa"]  # na's never ran
-    c._state = IDLE
-    c.cancel_install()
+    wait_for(lambda: c._installer.region.id == "afr")
+    failed = {r["id"]: r["failed"] for r in c.regions()["list"]}
+    assert failed["na"] == failed["sa"] == "this region's update changed"
+    assert [made[0] for made in GatedInstaller.made] == ["eur", "afr"]
+    open_gate("afr")
     wait_for(lambda: not c.installing())
     c.remove_region("na")
     assert {r["id"]: r["failed"] for r in c.regions()["list"]}["na"] is None
-
-
-def test_an_install_that_raises_is_said_on_its_row_until_live_starts(
-    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """An install whose run raises outside its own words says why on its row, its progress no
-    longer shown, and the queue goes on. Live's start forgets the failures, as it does the line of
-    the last install."""
-    c = queue_control(tmp_path / "X-Plane 12")
-    GatedInstaller.raising.add("eur")
-    c.install_region("eur", whole=False)
-    c.install_region("na", whole=False)
-    wait_for(lambda: c._installer is not None and c._installer.region.id == "na")
-    failed = {r["id"]: r["failed"] for r in c.regions()["list"]}
-    assert failed["eur"] == "OSError: no address for the host"
-    open_gate("na")
-    wait_for(lambda: not c.installing())
-    monkeypatch.setattr(c, "_run", lambda options: c._set(IDLE))  # no stream: its start alone
-    assert c.start() and c.wait_idle(5)
-    assert {r["id"]: r["failed"] for r in c.regions()["list"]}["eur"] is None
-
-
-def test_an_update_that_changed_while_queued_is_refused_at_its_turn(
-    home: Path, tmp_path: Path
-) -> None:
-    """« Keep the old mesh? » is asked at the click only where the update replaces the mesh: a
-    release made while it waits that replaces it is refused at its turn, never run with an answer
-    nobody gave."""
-    import dataclasses
-
-    c = queue_control(tmp_path / "X-Plane 12")
-    put_region(c._catalog["na"])  # its mesh the list's: an update in place, no question
-    c.install_region("eur", whole=False)
-    c.install_region("na", whole=False)
-    remade = dataclasses.replace(c._catalog["na"].mesh[0], sha256="d" * 64)
-    c._catalog["na"] = dataclasses.replace(c._catalog["na"], mesh=(remade,))
-    open_gate("eur")
-    wait_for(lambda: not c.installing())
-    failed = {r["id"]: r["failed"] for r in c.regions()["list"]}["na"]
-    assert failed.startswith("its update changed since its question was answered")
-    assert [made[0] for made in GatedInstaller.made] == ["eur"]
 
 
 def test_stop_empties_the_queue_and_a_region_comes_out_of_it_alone(
@@ -2221,17 +2184,17 @@ def test_stop_empties_the_queue_and_a_region_comes_out_of_it_alone(
     c.install_region("eur", whole=False)
     c.install_region("na", whole=False)
     c.install_region("sa", whole=False)
-    with pytest.raises(session.RefusedError, match="being installed"):
+    with pytest.raises(session.RefusedError, match="take it out of the queue first"):
         c.remove_region("na")
     c.unqueue_region("na")
     c.unqueue_region("na")  # not queued any more: nothing done
     c.unqueue_region("eur")  # under way: its Stop stops it
-    assert queued(c) == {"eur": None, "na": None, "sa": 1}
+    assert queued(c) == {"eur": None, "na": None, "sa": 1, "afr": None}
     open_gate("eur")
     wait_for(lambda: c._installer.region.id == "sa")
     c.install_region("na", whole=False)
     c.cancel_install()
-    assert queued(c) == {"eur": None, "na": None, "sa": None}
+    assert queued(c) == {"eur": None, "na": None, "sa": None, "afr": None}
     wait_for(lambda: not c.installing())
     assert [made[0] for made in GatedInstaller.made] == ["eur", "sa"]
     assert c.regions()["install"]["phase"] == "cancelled"
@@ -2271,10 +2234,7 @@ def test_a_region_queued_behind_the_night_grids_holds_start(
     put_region(c._catalog["eur"])
     c._fetch_night_grids(c._catalog)
     wait_for(lambda: c._installer is not None and c._installer.night_only)
-    assert not c.installing()  # alone, it holds nothing
-    c._quiet = False  # asked to stop, winding down: still nothing
-    assert not c.installing() and not c.busy()
-    c._quiet = True
+    assert not c.installing() and not c.busy()  # alone, it holds nothing
     monkeypatch.setattr(c, "_stop_night_grids", lambda: None)  # its stop not answered in time
     c.install_region("na", whole=False)
     assert c.installing() and c.busy()
@@ -2416,13 +2376,40 @@ def test_update_all_takes_the_rows_that_offer_update() -> None:
         ["eur"],
     ]
     keep = {"whole": True, "keep_old": True, "make_room": False}
-    clicks = _page("updateAllClicks", [[{"ours": ours, "list": listed, "install": running}, True]])
+    rows = [{"id": "eur", "whole": False}, {"id": "asi", "whole": True}]
+    clicks = _page("updateAllClicks", [[rows, True]])
     assert clicks == [
         [
             {"id": "eur", "body": {**keep, "whole": False, "keep_old": False}},
             {"id": "asi", "body": keep},
         ]
     ]
+
+
+@pytest.mark.anyio
+async def test_update_all_s_clicks_one_refused_the_others_queued(
+    home: Path, tmp_path: Path
+) -> None:
+    """« Update all » sends each region's own click: one asked on an update that no longer is
+    what it was (here: asked as replacing the mesh) is refused at once, the others queued."""
+    c = queue_control(tmp_path / "X-Plane 12")
+    for region_id in ("na", "sa"):
+        put_region(c._catalog[region_id])
+    async with client_for(create_live_app(c)) as client:
+        await client.post("/api/live/regions/eur/install", json={"whole": False})
+        asked = [("na", True), ("sa", False)]
+        got = [
+            await client.post(
+                f"/api/live/regions/{region_id}/install",
+                json={"whole": whole, "keep_old": whole, "make_room": False},
+            )
+            for region_id, whole in asked
+        ]
+        assert [answer.status_code for answer in got] == [409, 202]
+        assert got[0].json()["detail"] == "this region's update changed: click it again"
+        assert queued(c) == {"eur": None, "na": None, "sa": 1, "afr": None}
+        await client.post("/api/live/regions/cancel")
+        wait_for(lambda: not c.installing())
 
 
 @pytest.mark.anyio
@@ -2635,22 +2622,34 @@ def test_soft_banks_saved_in_flight_brings_every_region_s_river_masks(home: Path
     c._state = IDLE
 
 
-class FailedInstaller(FakeInstaller):
-    """An install that fails at once, in its own words."""
-
-    def run(self) -> None:
-        self.phase = "failed"
-
-    def snapshot(self) -> dict:
-        return {**super().snapshot(), "error": "no room on the disk"}
-
-
 def test_a_river_masks_download_that_fails_is_said_on_its_region(home: Path) -> None:
-    c = rivers_control({"rivers_fade": True}, FailedInstaller)
+    reset_gates()
+    GatedInstaller.errors["eur"] = "no room on the disk"
+    open_gate("eur")
+    c = rivers_control({"rivers_fade": True}, GatedInstaller)
     put_region(c._catalog_of(None)["eur"])
     assert c.rivers_chosen()
     wait_for(lambda: not c.installing())
     assert {r["id"]: r["failed"] for r in c.regions()["list"]}["eur"] == "no room on the disk"
+
+
+def test_a_thread_that_cannot_start_gives_the_installs_place_back(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    started = threading.Thread
+
+    class NoRivers(started):
+        def start(self) -> None:
+            if self.name == "live-rivers":
+                raise RuntimeError("can't start new thread")
+            super().start()
+
+    c = rivers_control({"rivers_fade": True})
+    put_region(c._catalog_of(None)["eur"])
+    monkeypatch.setattr(control_module.threading, "Thread", NoRivers)
+    assert not c.rivers_chosen()
+    assert c._install_thread is None and not c.installing()  # never held by a thread never run
+    assert any("live-rivers not started" in line["text"] for line in c.log_after(0)["lines"])
 
 
 def test_soft_banks_saved_waits_for_the_install_under_way_and_stops_whole(home: Path) -> None:

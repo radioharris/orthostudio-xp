@@ -97,6 +97,11 @@ class Refusal(NamedTuple):
     what: str
 
 
+class UpdateChanged(session.RefusedError):
+    """A region's update no longer replacing its mesh as it did when the window asked its
+    questions, or now replacing it unasked (``LiveControl._may_install``)."""
+
+
 class Queued(NamedTuple):
     """A region's install in the window's queue, with the answers given at its click, and whether
     its update replaced the mesh then (``whole``: the keep question is asked only then)."""
@@ -436,8 +441,10 @@ class LiveControl:
         self._install_thread: threading.Thread | None = None
         # the window's queue of regions to install (:meth:`install_region`): those waiting, and
         # the one taken from it whose install holds the place; and why each region's last install
-        # failed, the one source the page reads (:meth:`_run_shown`), dropped as the region is
-        # queued, installed or deleted again, and at Live's start
+        # failed, the one source the page reads (:meth:`_run_shown`, :meth:`_note_failed`),
+        # cleared where the region is asked again: queued again (:meth:`install_region`), its river
+        # masks fetched again (:meth:`_rivers`), deleted (:meth:`remove_region`), and at Live's
+        # start (:meth:`start`)
         self._queue: list[Queued] = []
         self._turn: Queued | None = None
         self._failed: dict[str, str] = {}
@@ -560,8 +567,8 @@ class LiveControl:
             if self._installing():
                 raise session.RefusedError(INSTALLING)
             if self._install_thread is None:  # an install over ends with this start, and the
-                self._installer = None  # line of one stopped with it, the failures' too
-                self._failed.clear()
+                self._installer = None  # line of one stopped with it
+            self._failed.clear()
             self._state, self._error, self._report = STARTING, None, None
             self._stop.clear()
             self._leave.clear()
@@ -923,7 +930,7 @@ class LiveControl:
                 daemon=True,
             )
             self._install_thread = self._night_thread = thread
-        thread.start()
+        self._start_holder(thread)
 
     def _night_grids(self, root: Path, regions: list) -> None:
         for region in regions:
@@ -1050,13 +1057,16 @@ class LiveControl:
         the window's answer, the region of before kept at the swap as its old mesh. ``make_room``:
         the window's « Delete the kept old one and install the new one » where the disk lacks room
         (``osxpregions.Installer.make_room``, checked again as it deletes)."""
-        self._may_install(region_id, whole)
-        self._stop_night_grids()
+        try:
+            self._may_install(region_id, whole)
+        except UpdateChanged as e:  # at the click, with nothing on its row yet
+            raise session.RefusedError(f"{e}: click it again") from e
         with self._lock:
             if not self._in_queue(region_id):
                 self._failed.pop(region_id, None)
                 self._queue.append(Queued(region_id, keep_old, make_room, whole))
             turn = self._take_turn()
+        self._stop_night_grids()  # where it holds the place, its end starts the queue
         self._start(turn)
 
     def _in_queue(self, region_id: str) -> bool:
@@ -1086,9 +1096,7 @@ class LiveControl:
         if self._state != IDLE and installed:
             raise session.RefusedError("Live is streaming over this region: stop it first")
         if _whole(root, region, installed) != whole:
-            raise session.RefusedError(
-                "its update changed since its question was answered: click Update again"
-            )
+            raise UpdateChanged("this region's update changed")
         return region
 
     def _take_turn(self) -> Queued | None:
@@ -1126,13 +1134,28 @@ class LiveControl:
         if thread is None:
             self._give_place()
             return
+        self._start_holder(thread, turn.region, installer)
+
+    def _start_holder(
+        self, thread: threading.Thread, region_id: str | None = None, installer: Any = None
+    ) -> bool:
+        """Start a thread just given the installs' place (a region's install, the river masks' or
+        the night grids' round). None to be had: the place taken back by the calling thread and
+        given on (:meth:`_give_place`), never held by a thread that never ran, the failure noted
+        on the region where it has one, else in the log. Whether it started."""
         try:
             thread.start()
-        except RuntimeError as e:  # no thread to be had: the place taken back, then given on
+            return True
+        except RuntimeError as e:
             with self._lock:
                 self._install_thread = threading.current_thread()
-            self._note_failed(turn.region, f"{type(e).__name__}: {e}", installer)
+            said = f"{type(e).__name__}: {e}"
+            if region_id is not None:
+                self._note_failed(region_id, said, installer)
+            else:
+                self.log(f"{thread.name} not started: {said}")
             self._give_place()
+            return False
 
     def _installer_for(self, turn: Queued) -> Any:
         """A turn's installer, with the answers of its click, once its checks are made again
@@ -1161,13 +1184,10 @@ class LiveControl:
         self._mesh_follows_kept()  # a kept old mesh deleted to make room
 
     def _run_shown(self, installer: Any) -> str:
-        """An install the page shows run, a region's or its river masks': its region's failure,
-        the one the page reads (``failed``), dropped as it starts and kept as it fails, in its
-        installer's words or, raised outside them (its client made, say), in the error's; its last
-        phase."""
+        """An install the page shows run, a region's or its river masks': its failure kept as the
+        region's (``failed``), in its installer's words or, raised outside them (its client made,
+        say), in the error's; its last phase."""
         region_id = installer.region.id
-        with self._lock:
-            self._failed.pop(region_id, None)
         try:
             installer.run()
         except Exception as e:
@@ -1252,8 +1272,7 @@ class LiveControl:
         if busy:
             self.log("the river masks come with Update once the install under way is done")
             return False
-        thread.start()
-        return True
+        return self._start_holder(thread)
 
     def _rivers(self) -> None:
         root = live_root()
@@ -1285,6 +1304,7 @@ class LiveControl:
                 if self._rivers_stop.is_set():
                     return
                 self._installer = installer
+                self._failed.pop(region_id, None)
             # river masks whole and waiting for Live's next start (X-Plane open) are done too
             if self._run_shown(installer) not in ("done", "waiting"):
                 return
@@ -1308,6 +1328,10 @@ class LiveControl:
             running = self._install_thread
             if self._state != IDLE:
                 raise session.RefusedError("Live is streaming: stop it first")
+            if any(q.region == region_id for q in self._queue):
+                raise session.RefusedError(
+                    "this region waits in the queue: take it out of the queue first"
+                )
             if self._in_queue(region_id) or (
                 running is not None
                 and (
