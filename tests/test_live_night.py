@@ -659,7 +659,7 @@ class NightWorkTest(unittest.TestCase):
         self.assertEqual(self.work.wanted, {self.near: 0})  # those built: their night at once
 
     def test_nothing_by_day(self):
-        self.work.built(self.near, 0)
+        self.work.want(self.near, 0)
         self.turn()
         self.assertEqual((self.work.wanted, self.pools), ({}, []))
 
@@ -688,7 +688,7 @@ class NightWorkTest(unittest.TestCase):
         self.pools[0].finish()
         self.turn()
         self.assertEqual(self.work.start_left(day_left=0), 0)
-        self.work.built(self.paris, 6)  # X-Plane not there yet: farther ones, by one process
+        self.work.want(self.paris, 6)  # X-Plane not there yet: farther ones, by one process
         self.turn()
         self.assertTrue(self.pools[0].shut)  # the team ends, its memory with it
         self.assertNotIn(self.pools[0], self.work._jobs)
@@ -710,13 +710,15 @@ class NightWorkTest(unittest.TestCase):
 
     def test_a_start_waits_for_x_plane_s_squares_round_it_only(self):
         """Not for the whole pack: 11,142 night textures at a Paris start, Nice's and the Alps'
-        among them (2026-11-11); nor for those built after its photos, farther."""
+        among them (2026-11-11). Those its plan wants there, as they come."""
         at_night(self.prefs)
         self.work.start(43.70, 7.25, lambda: {self.near: 0, self.paris: 4})
         self.assertEqual(self.work.start_left(day_left=3), 1)
         self.assertEqual(self.work.start_left(day_left=0), 1)
-        self.work.want(self.far, 4)  # built after its photos, as X-Plane waits
-        self.assertEqual(self.work.start_left(day_left=0), 1)
+        self.work.want(self.far, 4)  # in X-Plane's squares round it
+        self.assertEqual(self.work.start_left(day_left=0), 2)
+        self.work.want(self.paris, 2)  # elsewhere
+        self.assertEqual(self.work.start_left(day_left=0), 2)
 
     def test_a_start_waits_three_minutes_at_most(self):
         from unittest import mock
@@ -824,7 +826,7 @@ class NightWorkTest(unittest.TestCase):
         self.pools[0].finish(lit=False)  # no light there: the black name
         self.turn()
         self.assertEqual(self.work.counted(), {})
-        self.work.built(self.near, 0)
+        self.work.want(self.near, 0)
         self.work.lit[self.near] = 0
         with (
             mock.patch("orthostudio.live.names.NightPool.replace", side_effect=PermissionError),
@@ -843,7 +845,7 @@ class NightWorkTest(unittest.TestCase):
         self.work.tick((43.70, 7.25), (314, 20.0), lambda: {self.near: 0})
         self.turn()
         self.work.back_to_black(self.near)  # made coarser while its job runs
-        self.work.built(self.near, 4)
+        self.work.want(self.near, 4)
         self.assertEqual(self.work.counted(), {self.near: 0})  # its job writes it sharp
         self.pools[0].finish()
         self.turn()  # back: black, then given again from its new level
@@ -858,7 +860,7 @@ class NightWorkTest(unittest.TestCase):
             self.assertRaises(PermissionError),
         ):
             self.work.back_to_black(self.near)
-        self.work.built(self.near, 4)
+        self.work.want(self.near, 4)
         self.turn()
         self.assertEqual(self.work.counted(), {self.near: 0})  # given coarser: still the sharp one
         self.pools[0].finish(said="OSError: full")  # and that job writes nothing
@@ -904,7 +906,7 @@ class NightWorkTest(unittest.TestCase):
         self.work.tick((43.70, 7.25), (314, 20.0), lambda: {self.near: 0})
         self.turn()
         self.work.back_to_black(self.near)
-        self.work.built(self.near, 4)
+        self.work.want(self.near, 4)
         lit.unlink()
         lit.write_bytes(b"lit sharp")  # the job writes it after
         self.pools[0].finish()
@@ -927,6 +929,91 @@ def nightwork_team_max():
     from orthostudio.live.nightwork import TEAM_MAX
 
     return TEAM_MAX
+
+
+class PlanNightTest(unittest.TestCase):
+    """The streamer's plan wants the night texture of each texture it plans, at the level X-Plane
+    will read of it, at night only; nightfall wants those built and those the plan queued; a start
+    waits for those its plan wants round it."""
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+
+        from live_helpers import NAMES, make_source
+        from orthostudio.live.cache import ChunkCache
+        from orthostudio.live.nightwork import NightWork
+        from orthostudio.live.region import setup_region
+        from orthostudio.live.streamer import Streamer
+
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        pack = root / "stream_pack"
+        setup_region(make_source(root, tile=(45, 6), textures=NAMES), pack, log=lambda _: None)
+        self.night = NightWork(pack, None, None, [], log=lambda _: None, make_pool=_Pool)
+        self.cache = ChunkCache(root / "c.sqlite")
+        self.s = Streamer(pack, self.cache, lambda on: None, workers=1, log=lambda _: None,
+                          night=self.night)  # fmt: skip
+        self.names = [f"{n}.dds" for n in NAMES]
+
+    def tearDown(self):
+        self.cache.close()
+        self.tmp.cleanup()
+
+    def fix(self, dlat=0.0):
+        from orthostudio.live.geo import parse_texture_name
+        from orthostudio.live.streamer import Fix
+
+        lat, lon = parse_texture_name(self.names[0]).center
+        return Fix(lat + dlat, lon)
+
+    def levels(self, jobs):
+        """The night levels of the textures planned, counted from the top of their file."""
+        return {n: max(0, lv - max(0, self.s.top_of(n))) for n, (_, lv) in jobs.items()}
+
+    def test_each_texture_planned_has_its_night_wanted(self):
+        self.night.night = True
+        jobs = self.s.plan(self.fix(), x_plane_there=False)
+        self.assertEqual(sorted(jobs), sorted(self.names))
+        self.assertEqual(self.s.built, {})  # none built
+        self.assertEqual(self.night.wanted, self.levels(jobs))
+
+    def test_by_day_none_is_wanted(self):
+        self.s.plan(self.fix(), x_plane_there=False)
+        self.assertEqual(self.night.wanted, {})
+
+    def test_only_what_changes_and_one_made_black_again(self):
+        """Made, a night is not wanted again by the next plans; made black (its texture made
+        coarser, set to a new size), the next plan wants it again; wanted sharper as the aircraft
+        comes closer."""
+        self.night.night = True
+        far = self.s.plan(self.fix(-1.0), x_plane_there=False)  # 110 km south
+        self.night.made.update(self.night.wanted)  # made
+        self.night.wanted.clear()
+        self.s.plan(self.fix(-1.0), x_plane_there=False)
+        self.assertEqual(self.night.wanted, {})
+        self.s._night_black(self.names[0])
+        self.s.plan(self.fix(-1.0), x_plane_there=False)
+        self.assertEqual(self.night.wanted, {self.names[0]: self.levels(far)[self.names[0]]})
+        near = self.s.plan(self.fix(), x_plane_there=False)
+        self.assertEqual(self.night.wanted, self.levels(near))
+        self.assertTrue(all(self.levels(near)[n] < self.levels(far)[n] for n in self.names))
+
+    def test_nightfall_wants_those_built_and_those_queued(self):
+        self.s.built = {"built_far_away.dds": 2}
+        jobs = self.s.plan(self.fix(), x_plane_there=False)  # by day: queued
+        lat, lon = self.fix().lat, self.fix().lon
+        self.night.tick((lat, lon), (314, 20.0), self.s.textures_now)  # 20:00 UTC: night
+        self.assertTrue(self.night.night)
+        self.assertEqual(self.night.wanted, {**self.levels(jobs), "built_far_away.dds": 2})
+
+    def test_a_start_waits_for_the_nights_its_plan_wants_round_it(self):
+        lat, lon = self.fix().lat, self.fix().lon
+        self.night.start(lat, lon, self.s.textures_now)
+        self.night.tick((lat, lon), (314, 20.0), self.s.textures_now)
+        jobs = self.s.plan(self.fix(), x_plane_there=False, starting=True)
+        self.assertEqual(self.night.start_left(day_left=len(jobs)), len(self.names))
+        self.assertEqual(self.night.start_left(day_left=0), len(self.names))
 
 
 class RoadsOnceTest(unittest.TestCase):
@@ -1083,7 +1170,7 @@ class StartBarTest(unittest.TestCase):
             night=night,
             urgent_left=lambda: day.left,
             urgent_building=lambda: 0,
-            built_copy=lambda: {},
+            textures_now=lambda: {},
             squares_left=lambda *points: 0,
         )
         a = Arrival(43.63, 1.37, "LFBO", "plugin", 0.0)
@@ -1348,7 +1435,7 @@ class NightDiskTest(unittest.TestCase):
             night=night,
             urgent_left=lambda: 0,
             urgent_building=lambda: 0,
-            built_copy=lambda: {},
+            textures_now=lambda: {},
             squares_left=lambda *points: 0,
         )
         a = Arrival(46.24, 6.11, "LSGG", "plugin", 0.0, held_time=(171, 15.5))
@@ -1384,16 +1471,15 @@ class NightDiskTest(unittest.TestCase):
 
         said = []
         night = SimpleNamespace(back_to_black=lambda name: said.append(("black", name)))
-        night.built = lambda name, level: said.append(("built", name, level))
         s = SimpleNamespace(
             built={"a.dds": 0}, night=night, log=print, copied_up={"a.dds"}, water={"a.dds": 0}
         )
-        s._night_follows = lambda name, level: Streamer._night_follows(s, name, level)
+        s._night_black = lambda name: Streamer._night_black(s, name)
         Streamer._refit(s, "a.dds", 1)
         self.assertEqual((s.built, s.copied_up), ({"a.dds": 1}, set()))  # written again: no copy
-        self.assertEqual(said, [("black", "a.dds"), ("built", "a.dds", 1)])
+        self.assertEqual(said, [("black", "a.dds")])  # wanted again by the next plan
         Streamer._refit(s, "neutral.dds", 1)  # not built: nothing of its own
-        self.assertEqual(len(said), 2)
+        self.assertEqual(len(said), 1)
 
     def test_only_what_a_file_holds_is_counted(self):
         """A texture's night counted once it holds lights, its 8192 px copy once made: counted
@@ -1412,6 +1498,23 @@ class NightDiskTest(unittest.TestCase):
         coarser = pick(built, {"copied": 1.0}, lambda n: n == "copied", both - 1, tops,
                        lit={"lit": 0}, copied=["copied"])  # fmt: skip
         self.assertEqual(coarser, [("copied", 4)])
+
+    def test_a_night_alone_counted_and_made_black_as_a_256_px_texture_goes_neutral(self):
+        """A night whose texture is not built: counted, and over the disk budget made black where
+        a 256 px texture goes back to the neutral clone (beyond 300 km, not queued nor being
+        built), those behind first."""
+        from orthostudio.live.evict import night_bytes, pick, texture_bytes, usage
+        from orthostudio.live.region import NEUTRAL_LEVEL
+
+        built = {"day.dds": 4}
+        lit = {"alone.dds": 0, "behind.dds": 1, "day.dds": 4}
+        total = usage(built, None, lit)
+        self.assertEqual(total, texture_bytes(4) + night_bytes(0) + night_bytes(1) + night_bytes(4))
+        anywhere = pick(built, {}, lambda n: False, total // 2, neutral=lambda n: n != "day.dds",
+                        behind=lambda n: n == "behind.dds", lit=lit)  # fmt: skip
+        self.assertEqual(anywhere, [("behind.dds", NEUTRAL_LEVEL), ("alone.dds", NEUTRAL_LEVEL)])
+        in_reach = pick(built, {}, lambda n: False, total // 2, neutral=lambda n: False, lit=lit)
+        self.assertEqual(in_reach, [])
 
     def test_a_night_counted_by_itself_its_texture_built_or_stale(self):
         """Counted with their built texture only, a season's change left every night out (the

@@ -1,10 +1,10 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The night textures of Live's textures built, made while it is night in X-Plane.
+"""The night textures of Live's textures, made while it is night in X-Plane.
 
-The streamer builds the day textures (orthostudio.live.streamer); this follows them. Each texture
-built gets its night texture (orthostudio.live.night) from the same level down, counted from the
-top of its file, a quarter of its side: a 4096 px day texture a 1024 px night one, a 256 px one far
+Each texture the streamer plans (orthostudio.live.streamer) gets its night texture
+(orthostudio.live.night) from the level X-Plane will read of it down, counted from the top of its
+file, a quarter of its side: a 4096 px day texture a 1024 px night one, a 256 px one far
 away a 64 px one, so the far towns light up early and cheaply, as the far ground does. Night, for
 Live, is from :data:`NIGHT_AHEAD_H` before sunset to sunrise, by X-Plane's time at the aircraft
 (:func:`night_at`): X-Plane never reads again a level it took, so a night texture must be there
@@ -484,10 +484,9 @@ class NightWork:
         self._centres: dict[str, tuple[float, float] | None] = {}
         self._dsfs: dict[tuple[int, int], Path | None] = {}
         self._pool_names: NightPool | None = None
-        # a start: where, X-Plane's squares round it, the nights it waits for
+        # a start: where, X-Plane's squares round it, since when only its nights are awaited
         self.start_at: tuple[float, float] | None = None
         self._window: set[tuple[int, int]] | None = None
-        self._start_set: set[str] | None = None
         self._waited_since: float | None = None
         self.gave_up = False
         self.waiting = False  # the start waits for its photos or its night textures: the team
@@ -495,31 +494,40 @@ class NightWork:
     # --- what the streamer says ------------------------------------------------------------
 
     def want(self, name: str, level: int) -> None:
-        """``name``'s night wanted from ``level`` (the streamer's, from 4096 px): X-Plane counts a
-        file's levels from its top, so its night is counted so too, or the night of a 2048 px
-        file was a hole, black, where X-Plane reads it (the review of 2026-11-11)."""
+        """``name``'s night wanted from ``level`` (the streamer's plan, from 4096 px), at night
+        only: X-Plane counts a file's levels from its top, so its night is counted so too, or the
+        night of a 2048 px file was a hole, black, where X-Plane reads it (the review of
+        2026-11-11). The plan asks for every texture in reach every 2 s: the lock is taken only
+        for a change (:meth:`_asked`)."""
+        if not self.night:
+            return
         level = max(0, level - max(0, self.top_of(name)))
+        if self._asked(name, level):  # read without the lock first
+            return
         with self.lock:
-            if self.made.get(name, 99) <= level:
-                return
-            if name not in self.changed and self.running.get(name, 99) <= level:
-                return  # the one being made does
-            self.wanted[name] = min(level, self.wanted.get(name, 99))
+            if not self._asked(name, level):
+                self.wanted[name] = min(level, self.wanted.get(name, 99))
 
-    def built(self, name: str, level: int) -> None:
-        """The streamer built ``name`` at ``level``: its night follows, if it is night."""
-        if self.night:
-            self.want(name, level)
+    def _asked(self, name: str, level: int) -> bool:
+        """Whether ``name``'s night is made, being made (not changed meanwhile) or wanted from
+        ``level`` or sharper, or was left for the flight after :data:`TRIES` failures."""
+        return (
+            self.made.get(name, 99) <= level
+            or (name not in self.changed and self.running.get(name, 99) <= level)
+            or self.wanted.get(name, 99) <= level
+            or self.tries.get(name, 0) >= TRIES
+        )
 
     def tick(
         self,
         at: tuple[float, float] | None,
         when: tuple[float, float] | None,
-        built: Callable[[], dict[str, int]],
+        textures: Callable[[], dict[str, int]],
     ) -> None:
         """Where the aircraft is, or the start, and X-Plane's day of the year and UTC hours there
-        (``when``, None when not known): when night comes, every texture built is wanted (the
-        nearest first). The caller gives the time that is right: in flight X-Plane's own; at a
+        (``when``, None when not known): when night comes, every texture of ``textures()`` is
+        wanted (the streamer's ``textures_now``: built, queued or being built; the nearest
+        first). The caller gives the time that is right: in flight X-Plane's own; at a
         start the one the plugin read in X-Plane as it loads it (orthostudio.live.gate), never
         the one X-Plane sends meanwhile, the flight before's (it took a start at night chosen in
         flight for day)."""
@@ -528,10 +536,10 @@ class NightWork:
         if when is None or self._at is None:
             return
         solar = (when[1] + self._at[1] / 15.0) % 24.0  # UTC to the aircraft's solar time
-        self._set_night(night_at(when[0], solar, self._at[0]), built, "in X-Plane")
+        self._set_night(night_at(when[0], solar, self._at[0]), textures, "in X-Plane")
 
     def start(
-        self, lat: float, lon: float, built: Callable[[], dict[str, int]] | None = None
+        self, lat: float, lon: float, textures: Callable[[], dict[str, int]] | None = None
     ) -> None:
         """A start planned there: night there by the time X-Plane saved for it, its night textures
         then made before X-Plane goes on, those of X-Plane's squares round it (:meth:`start_left`).
@@ -540,16 +548,16 @@ class NightWork:
         then gave 23:30 (the user's flight, 2026-11-10)."""
         self.start_at = (lat, lon)
         self._window = xplane_tiles(lat, lon)
-        self._start_set, self._waited_since, self.gave_up = None, None, False
+        self._waited_since, self.gave_up = None, False
         self.waiting = True
         saved = _solar_at_start(self.prefs) if self.prefs is not None else None
         if saved is not None:
-            self._set_night(night_at(*saved, unsure_h=START_UNSURE_H), built, "at the start")
+            self._set_night(night_at(*saved, unsure_h=START_UNSURE_H), textures, "at the start")
 
     def arrived(self) -> None:
         """The start is over (X-Plane flies there, or went elsewhere: the streamer's ``arrived``):
         one process again."""
-        self.start_at = self._window = self._start_set = None
+        self.start_at = self._window = None
 
     @property
     def start_night(self) -> bool:
@@ -560,20 +568,13 @@ class NightWork:
     def start_left(self, day_left: int = 0) -> int:
         """Night textures still to make which a start waits for, as for its photos (0 by day): those
         of X-Plane's squares round it (its whole pack's, other regions' too, 11,142 at a Paris
-        start, the review of 2026-11-11), of the textures built when its photos were (those built
-        after, farther, are made in flight: 27 s more at LSGG, 2026-11-11). ``day_left``: the
-        start's day textures still to build; once none is, :data:`NIGHT_WAIT_S` at most."""
+        start, the review of 2026-11-11), wanted or being made, as the start's plan wants them.
+        ``day_left``: the start's day textures still to build; once none is,
+        :data:`NIGHT_WAIT_S` at most."""
         if not self.start_night:
             return 0
         with self.lock:
-            pending = [n for n in {*self.wanted, *self.running} if self._in_window(n)]
-            if day_left > 0:
-                self._start_set = None
-                left = len(pending)
-            else:
-                if self._start_set is None:
-                    self._start_set = set(pending)
-                left = sum(1 for n in self._start_set if n in self.wanted or n in self.running)
+            left = sum(1 for n in {*self.wanted, *self.running} if self._in_window(n))
         self.waiting = left > 0 or day_left > 0
         if left == 0 or day_left > 0:
             self._waited_since = None
@@ -591,10 +592,10 @@ class NightWork:
         return left
 
     def back_to_black(self, name: str) -> None:
-        """``name`` made neutral or coarser: its night black (:meth:`_black`), made again if it
-        is wanted. One being made meanwhile is not counted made, and is put back so once
-        made (:meth:`pump`): counted at the level it was given, a night 1024 px wide stayed over a
-        texture made 256 px (the review of 2026-11-11)."""
+        """``name`` made neutral or coarser: its night black (:meth:`_black`), made again once the
+        streamer's plan wants it again. One being made meanwhile is not counted made, and is put
+        back so once made (:meth:`pump`): counted at the level it was given, a night 1024 px wide
+        stayed over a texture made 256 px (the review of 2026-11-11)."""
         with self.lock:
             self.made.pop(name, None)
             self.wanted.pop(name, None)
@@ -607,8 +608,7 @@ class NightWork:
     def pump(self) -> None:
         """At each turn of the streamer's loop, X-Plane running or not yet: what the processes
         made recorded; as many processes as the moment wants (a team while a start at night waits,
-        from its first texture built until it waits for none; one in flight; none by day); and
-        two jobs a process, a few
+        until it waits for none; one in flight; none by day); and two jobs a process, a few
         textures of a square each, the nearest first. Only here: jobs given from their pool's own
         thread blocked it for good when one of its processes died (Python 3.14, the review of
         2026-11-11)."""
@@ -776,14 +776,16 @@ class NightWork:
 
     # --- helpers ------------------------------------------------------------------------------
 
-    def _set_night(self, night: bool, built: Callable[[], dict[str, int]] | None, why: str) -> None:
+    def _set_night(
+        self, night: bool, textures: Callable[[], dict[str, int]] | None, why: str
+    ) -> None:
         night = night and self.lights
         was, self.night = self.night, night
-        if night and not was and built is not None:
-            textures = built()
-            for name, level in textures.items():
+        if night and not was and textures is not None:
+            levels = textures()
+            for name, level in levels.items():
                 self.want(name, level)
-            self.log(f"  night {why}: its towns lit first, {len(textures)} textures built")
+            self.log(f"  night {why}: its towns lit first, {len(levels)} textures")
 
     def _in_window(self, name: str) -> bool:
         """Whether ``name`` lies in X-Plane's squares round the start (every name, no start)."""

@@ -188,7 +188,7 @@ ROADS_SHARE = 0.05
 """Live's disk space the roads kept for the night take at most, when it is on, and never more than
 orthostudio.live.nightwork.ROADS_KEPT_MB (the night's loop keeps them to it): a fixed share of a
 200 GB space set 10 GB aside for 1 GB of roads (the review of 2026-11-11). The night textures are
-counted with their day ones (evict.texture_bytes)."""
+counted each by itself (evict.usage)."""
 # textures built in another season (stale): their files made neutral again a few at a time, at
 # most this long every STALE_EVERY_S, those X-Plane may read built again first by the planner
 STALE_EVERY_S = 1.0
@@ -608,7 +608,7 @@ class Streamer:
                 watered=self._watered,
             )
             self.names.yielding = self.yielding
-        self.night = night  # the night textures of the textures built (orthostudio.live.nightwork)
+        self.night = night  # the night textures of the textures planned (live.nightwork)
         if night is not None:
             night.team = self.workers  # the start's team: as many as the encoders, idle by then
             night.top_of = self.top_of  # its levels counted from its file's top, as X-Plane does
@@ -682,17 +682,18 @@ class Streamer:
             done += 1
         return done
 
-    def _night_follows(self, name: str, level: int) -> None:
-        """A texture made coarser, or set to a new zoom's size: its night too, black then made
-        again from that level when it is night, as it is counted (evict.texture_bytes): kept
-        sharp, it took fifteen times its day texture (the review of 2026-11-11)."""
+    def _night_black(self, name: str) -> None:
+        """A texture's night black again (NightWork.back_to_black), wanted again by the next plan
+        at the level X-Plane reads, when it is night: a texture made coarser or neutral, set to a
+        new zoom's size, or a night alone over the disk budget. Kept sharp under a texture made
+        coarser, it took fifteen times its day texture (the review of 2026-11-11). Windows refusing
+        a file X-Plane holds open: said, and left as it was."""
         if self.night is None:
             return
         try:
             self.night.back_to_black(name)
         except OSError as e:
             self.log(f"  the night texture of {name} stays as it was: {e}")
-        self.night.built(name, level)
 
     def _neutral(self, name: str) -> None:
         """``name`` back to the neutral texture (its square made: X-Plane may read it), or gone (far
@@ -712,11 +713,7 @@ class Streamer:
             waterphoto.drop(path)  # and its mask: no square names them
         with self.lock:
             self.water.pop(name, None)
-        if self.night is not None:
-            try:
-                self.night.back_to_black(name)
-            except OSError as e:
-                self.log(f"  the night texture of {name} stays as it was: {e}")
+        self._night_black(name)
 
     # --- the squares' files -------------------------------------------------------------------
 
@@ -727,14 +724,14 @@ class Streamer:
 
     def _refit(self, name: str, level: int) -> None:
         """Under ``self.lock``: a texture set to a new zoom's size as its square was made
-        (orthostudio.live.names), the level its new file keeps; its night follows, counted from
-        the new file's top: left as it was, X-Plane read a hole there, black, until the next night
-        (the review of 2026-11-11)."""
+        (orthostudio.live.names), the level its new file keeps; its night black, made again
+        counted from the new file's top: left as it was, X-Plane read a hole there, black, until
+        the next night (the review of 2026-11-11)."""
         if name in self.built:
             self.built[name] = level
             self.copied_up.discard(name)  # its file written again: no copy there any more
             self.water.pop(name, None)  # made again at its size: said by _watered
-            self._night_follows(name, level)
+            self._night_black(name)
 
     def _watered(self, name: str, level: int) -> None:
         """Under ``self.lock``: a texture's water photo holds its land's photo, from ``level``, as
@@ -1147,6 +1144,7 @@ class Streamer:
         jobs: dict[str, tuple[float, int]] = {}
         late: list[str] = []  # 8192 px levels to copy the 4096 px one into now (copied_up)
         block = self._airport_block(fix.lat, fix.lon) if starting else set()
+        night = self.night
         for name, lat, lon, zoom, *_ in self.index.around(fix.lat, fix.lon, PLACEHOLDER_KM):
             if name in self.theirs:  # X-Plane shows the user's own tile there
                 continue
@@ -1179,6 +1177,8 @@ class Streamer:
                         and s_now <= ring_km(0, zoom) * self.scale * COPY_UP_AT
                     ):
                         late.append(name)
+            if night is not None:  # its night texture at that level, at night (NightWork.want)
+                night.want(name, level)
             if name in self.built and level <= self.built[name]:
                 self.seen[name] = now  # X-Plane will read it as sharp as it is: still needed so
             if self.level_of(name) <= level:
@@ -1334,8 +1334,6 @@ class Streamer:
                     return
                 self.stale.pop(name, None)  # its file written again, whole
                 self.built[name] = level
-                if self.night is not None:
-                    self.night.built(name, level)
                 self.built_version += 1
                 self.done[level] += 1
                 self.copied_up.discard(name)  # its file written again: no copy there any more
@@ -1776,6 +1774,10 @@ class Streamer:
             water=self._water_now(),
         )
         for name, level in picks[:EVICT_BATCH]:
+            if name not in self.built:  # a night alone (evict.pick): black, its day file left
+                self._night_black(name)
+                self.evicted += 1
+                continue
             path = self.pack_dir / "textures" / name
             if self._fitting(name):  # its square's files set it, and its water photo, meanwhile
                 continue
@@ -1790,7 +1792,7 @@ class Streamer:
                             self.water.pop(name, None)
                         else:
                             self.water[name] = water
-                    self._night_follows(name, level)
+                    self._night_black(name)
                     if level <= 4:
                         from .texture import needs_copy
 
@@ -1830,10 +1832,15 @@ class Streamer:
         if self.names is not None:
             self.names.start()
 
-    def built_copy(self) -> dict[str, int]:
-        """The textures built and their levels, a copy."""
+    def textures_now(self) -> dict[str, int]:
+        """Every texture X-Plane may read and its level, a copy: those built, at the level built,
+        and those the last plan queued or is building, at the level it wants, the sharper of the
+        two (NightWork.tick)."""
         with self.lock:
-            return dict(self.built)
+            out = dict(self.built)
+            for name, (_, level) in (*self.queue.items(), *self.in_flight.items()):
+                out[name] = min(level, out.get(name, level))
+        return out
 
     def close(self) -> None:
         self.stop.set()
@@ -2106,7 +2113,7 @@ def start_count(streamer: Streamer, arrival: Arrival, now: float, fresh: bool = 
     left = streamer.urgent_left()
     night_left, night = 0, False
     if streamer.night is not None:
-        streamer.night.tick((arrival.lat, arrival.lon), arrival.held_time, streamer.built_copy)
+        streamer.night.tick((arrival.lat, arrival.lon), arrival.held_time, streamer.textures_now)
         night_left, night = streamer.night.start_left(left), streamer.night.start_night
     done = arrival.progress(left, night_left, night)
     held_at = [arrival.held_at] if arrival.held_at is not None else []
@@ -2324,7 +2331,7 @@ def run(
         if season_for is not None and (day is not None or how != "plugin"):
             streamer.choose_season(*season_for(lat, day))
         if streamer.night is not None:  # night at the start's time: its lights made first
-            streamer.night.start(lat, lon, streamer.built_copy)
+            streamer.night.start(lat, lon, streamer.textures_now)
         streamer.plan(Fix(lat, lon), x_plane_there=False, starting=True)
         streamer.refresh_flight_plan()  # a new flight may have a new plan
         if streamer.covers(lat, lon):
@@ -2605,7 +2612,7 @@ def run(
                 running = fix is not None and now - last_packet < FRESH_S
                 if streamer.night is not None and running:  # a start's time is its own
                     when = xplane_time(values) if arrival is None else None
-                    streamer.night.tick((fix.lat, fix.lon), when, streamer.built_copy)
+                    streamer.night.tick((fix.lat, fix.lon), when, streamer.textures_now)
                 if arrival is not None and not running:
                     arrival.loading = True  # X-Plane stopped sending its position: it is loading
                 if arrival is None:

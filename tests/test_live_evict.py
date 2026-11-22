@@ -411,7 +411,7 @@ class StreamerTest(unittest.TestCase):
 
     def test_a_texture_made_coarser_takes_its_night_down_with_it(self):
         """Kept sharp, a night texture took fifteen times its day one (the review of
-        2026-11-11): black, then made again from the new level."""
+        2026-11-11): black, then made again at the level the next plan wants."""
         from unittest import mock
 
         from orthostudio.live import streamer as streamer_module
@@ -431,14 +431,41 @@ class StreamerTest(unittest.TestCase):
             def back_to_black(self, name):
                 told.append(("black", name))
 
-            def built(self, name, level):
-                told.append(("built", name, level))
-
         s.night = Night()
         with mock.patch.object(streamer_module, "pick", return_value=[(name, 4)]):
             s.evict()
         self.assertEqual(s.built, {name: 4})
-        self.assertEqual(told, [("black", name), ("built", name, 4)])
+        self.assertEqual(told, [("black", name)])
+
+    def test_a_night_alone_made_black_its_day_file_left(self):
+        """A night whose texture is not built, picked by the disk budget: made black, its day file
+        (the neutral name) and the textures built untouched."""
+        from unittest import mock
+
+        from orthostudio.live import streamer as streamer_module
+
+        name = f"{NAMES[1]}.dds"
+        day = self.pack / "textures" / name
+        before = day.read_bytes() if day.exists() else None
+        s = self.streamer()
+        s.built = {f"{NAMES[0]}.dds": 0}
+        told: list[str] = []
+
+        class Night:
+            roads_cap = 0
+
+            def counted(self):
+                return {name: 0}
+
+            def back_to_black(self, name):
+                told.append(name)
+
+        s.night = Night()
+        with mock.patch.object(streamer_module, "pick", return_value=[(name, NEUTRAL_LEVEL)]):
+            s.evict()
+        self.assertEqual(told, [name])
+        self.assertEqual(s.built, {f"{NAMES[0]}.dds": 0})
+        self.assertEqual(day.read_bytes() if day.exists() else None, before)
 
     def test_evicts_far_textures_down_to_the_budget(self):
         for n in NAMES:
