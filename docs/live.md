@@ -474,12 +474,14 @@ end before clicking the next: **Install** or **Update** while another install ru
 in a queue, with your answers to its questions. Its row says it waits and its place, with
 **Cancel** to take it out; each one starts as the one before ends, whether that one ended well or
 not, and Start waits until the queue is done. **Stop** stops the install under way and empties the
-queue. When two installed regions or more have an update to start, **Update all** queues them all
-at once and asks only once whether to keep the old meshes (the question sums their sizes). It does
-not ask about room: each install checks it as it starts, and a region short of room stops on its
-own line with the usual message while the others go on; its own **Update** then asks the room
-question. A region that fails, or cannot start at its turn (Live's folder unplugged meanwhile, or a
-newer release of it made while it waited), says why on its row; click its button again.
+queue (when the queue waits for something other than an install, the first region waiting has the
+**Stop**). When two installed regions or more have an update to download, **Update all** queues
+them all at once and asks only once whether to keep the old meshes (the question sums their
+sizes). It does not ask about room: each install checks it as it starts, and a region short of room
+stops on its own line with the usual message while the others go on; for an update that replaces
+the mesh, its own **Update** then asks the room question. A region that fails, or cannot start at
+its turn (Live's folder unplugged meanwhile, or a newer release that now replaces its mesh), says
+why on its row; click its button again.
 
 **Keeping the old mesh.** When an update replaces a region's mesh, Live first asks whether to keep
 the old one: **Keep** leaves it on the disk beside the new one (the question says its size), so that

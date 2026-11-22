@@ -1086,14 +1086,19 @@ export function regionRow(id, mine, r, install, running, idle, xplane, folder, a
   // closed: control.py _deleting), and while the region is queued, which its line's Cancel ends
   const deleteOff = !idle || running || xplane || Boolean(queued);
   const deleteWhy = queued ? t("regions.queued_delete") : null;
+  // Stop: on the install under way's row, which empties the queue too; on the first queued row
+  // where no install shows its own (the queue waits behind a deletion or the night grids)
   if (busy && running) {
     buttons.push({ act: "cancel", label: t("regions.cancel"), title: anyQueued ? t("regions.cancel_all") : null });
-  } else if (mine) {
-    if (offersUpdate(r, mine, install)) buttons.push({ act: "update", label: t("regions.update"), disabled: !idle || folder });
-    buttons.push({ act: armed ? "remove" : "arm", danger: true, disabled: deleteOff, title: deleteWhy,
-      label: armed ? t("regions.remove_sure") : t("regions.remove") });
-  } else if (r.download && !queued) {
-    buttons.push({ act: "install", label: t("regions.install"), disabled: folder });
+  } else {
+    if (queued === 1 && !running) buttons.push({ act: "cancel", label: t("regions.cancel"), title: t("regions.cancel_queue") });
+    if (mine) {
+      if (offersUpdate(r, mine, install)) buttons.push({ act: "update", label: t("regions.update"), disabled: !idle || folder });
+      buttons.push({ act: armed ? "remove" : "arm", danger: true, disabled: deleteOff, title: deleteWhy,
+        label: armed ? t("regions.remove_sure") : t("regions.remove") });
+    } else if (r.download && !queued) {
+      buttons.push({ act: "install", label: t("regions.install"), disabled: folder });
+    }
   }
   // the button that goes on after a stop, which its line names
   const again = t(mine ? "regions.update" : "regions.install");
@@ -1114,7 +1119,7 @@ export function regionRow(id, mine, r, install, running, idle, xplane, folder, a
     text: r.kept.size ? t("regions.kept_size", { gb: gb(r.kept.size) }) : t("regions.kept"),
     button: { act: "remove_kept", label: t("regions.remove"), danger: true, disabled: deleteOff, title: deleteWhy },
   } : null;
-  return { id, size, state, buttons, line, bar: busy && running, kept, sure, again };
+  return { id, size, state, buttons, line, bar: busy && running, kept, sure };
 }
 
 /** The regions « Update all » queues, in the list's order: those whose row offers Update
@@ -1125,6 +1130,16 @@ export function updateAllIds(regions) {
   return REGION_ORDER.filter((id) => {
     const r = (regions?.list || []).find((x) => x.id === id);
     return Boolean(r) && offersUpdate(r, mine.has(id), regions?.install) && !updateReady(r);
+  });
+}
+
+/** What « Update all » sends, region by region: each one's ordinary click, as asked on its
+ * update (r.whole, the server refusing it where that changed since), the keep answer for those
+ * whose update replaces the mesh, no room made first. [{id, body}] */
+export function updateAllClicks(regions, keepOld) {
+  return updateAllIds(regions).map((id) => {
+    const whole = Boolean((regions?.list || []).find((r) => r.id === id)?.whole);
+    return { id, body: { whole, keep_old: keepOld && whole, make_room: false } };
   });
 }
 
@@ -1209,7 +1224,7 @@ async function updateAsked(id, button) {
     if (!answer) return; // closed: nothing done
     keepOld = answer === "yes";
   }
-  await regionAct(`regions/${id}/install`, "POST", { keep_old: keepOld, make_room: makeRoom });
+  await regionAct(`regions/${id}/install`, "POST", { whole: Boolean(r.whole), keep_old: keepOld, make_room: makeRoom });
 }
 
 /** « Keep the old mesh? », the question of an update that replaces the mesh of one region or more
@@ -1241,11 +1256,9 @@ async function updateAll() {
   if (askingUpdate) return;
   askingUpdate = true;
   try {
-    const regions = last?.regions || {};
-    const ids = updateAllIds(regions);
-    const rows = ids.map((id) => ({ id, r: (regions.list || []).find((x) => x.id === id),
-      mine: (regions.ours || []).find((x) => x.id === id) || {} }));
-    const whole = rows.filter((row) => row.r.whole);
+    const regions = last?.regions || {}; // as the question is asked: what its clicks send
+    const whole = updateAllIds(regions).map((id) => ({ id, r: (regions.list || []).find((x) => x.id === id),
+      mine: (regions.ours || []).find((x) => x.id === id) || {} })).filter((row) => row.r.whole);
     let keepOld = false;
     if (whole.length) {
       const answer = await askKeep(whole, false);
@@ -1255,10 +1268,9 @@ async function updateAll() {
     regionsError(null);
     let refused = null;
     let got = null;
-    for (const row of rows) {
+    for (const { id, body } of updateAllClicks(regions, keepOld)) {
       try {
-        got = await api(`regions/${row.id}/install`, { method: "POST",
-          body: { keep_old: keepOld && Boolean(row.r.whole), make_room: false } });
+        got = await api(`regions/${id}/install`, { method: "POST", body });
       } catch (error) {
         refused ??= error; // said under the list, the others queued all the same
       }
@@ -1282,7 +1294,7 @@ async function removeKept(id) {
 function regionAction(id, act) {
   if (act === "cancel") return () => regionAct("regions/cancel");
   if (act === "unqueue") return () => regionAct(`regions/${id}/queued`, "DELETE");
-  if (act === "install") return () => regionAct(`regions/${id}/install`);
+  if (act === "install") return () => regionAct(`regions/${id}/install`, "POST", { whole: false }); // nothing to replace
   if (act === "update") return (ev) => updateRegion(id, ev.currentTarget);
   if (act === "remove_kept") return () => removeKept(id);
   if (act === "remove") {

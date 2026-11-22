@@ -167,6 +167,8 @@ no virtual disk between X-Plane and its textures: it builds them beside X-Plane 
   use and takes its place in one go, with Live stopped and X-Plane closed, nothing of the old one
   left behind, or the old one kept to go back to; a stop, a full disk or a power cut leaves the
   region as it was.
+- **Regions in a queue**: click the next region while one installs, or « Update all »: each
+  starts as the one before ends.
 
 Its guide, with the steps of a flight, the window and the measurements:
 [docs/live.md](docs/live.md).
