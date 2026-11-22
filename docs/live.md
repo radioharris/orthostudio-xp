@@ -470,17 +470,16 @@ one is. Live reads the regions of the light mesh, made in November 2026, from a 
 the Lives up to 2.2 keep the world of before, and the two never mix.
 
 **Several regions in a row.** Live installs one region at a time, but you need not wait for one to
-end before clicking the next: **Install** or **Update** while another install runs (or the masks of
-rivers and lakes download) puts the region in line, with your answers to its questions. Its row says
-it waits and its place (« Waiting: next in line », « Waiting: 2 ahead of it »), with **Cancel** to
-take it out of the line; each one starts as the one before ends, whether that one ended well or not.
-**Stop** stops the install under way and empties the line. When two installed regions or more have
-an update to start, **Update all** puts them all in line at once and asks only once whether to keep
-the old meshes (the question sums their sizes); it does not ask about room: each install checks the
-room as it starts, and a region short of room stops on its own line with the usual message while
-the others go on (its own **Update** then asks the room question). A region whose install fails, or
-cannot start at its turn (Live's folder unplugged meanwhile, say), says why on its row, and the line
-goes on with the next.
+end before clicking the next: **Install** or **Update** while another install runs puts the region
+in a queue, with your answers to its questions. Its row says it waits and its place, with
+**Cancel** to take it out; each one starts as the one before ends, whether that one ended well or
+not, and Start waits until the queue is done. **Stop** stops the install under way and empties the
+queue. When two installed regions or more have an update to start, **Update all** queues them all
+at once and asks only once whether to keep the old meshes (the question sums their sizes). It does
+not ask about room: each install checks it as it starts, and a region short of room stops on its
+own line with the usual message while the others go on; its own **Update** then asks the room
+question. A region that fails, or cannot start at its turn (Live's folder unplugged meanwhile, or a
+newer release of it made while it waited), says why on its row; click its button again.
 
 **Keeping the old mesh.** When an update replaces a region's mesh, Live first asks whether to keep
 the old one: **Keep** leaves it on the disk beside the new one (the question says its size), so that

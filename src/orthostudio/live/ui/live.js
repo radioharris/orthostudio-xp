@@ -983,20 +983,27 @@ async function regionAct(path, method = "POST", body = undefined) {
  * listed to download. */
 const updateReady = (r) => Boolean(r.waiting) && !((r.changed_bytes || 0) > 0);
 
-/** An install that ended short: failed or stopped (osxpregions.py Installer's phases). */
-const installStopped = (install) => ["failed", "cancelled"].includes(install?.phase);
+/** An install its Stop stopped (osxpregions.py Installer's phases): its row says so. A failure is
+ * read from the region alone (r.failed: control.py _run_shown), never from the install. */
+const installCancelled = (install) => install?.phase === "cancelled";
 
-/** An install under way, its bar running: not done, waiting whole for Live's next start, nor
- * stopped (installStopped). */
+/** An install under way, its bar running: not done, waiting whole for Live's next start, failed
+ * nor stopped. */
 const installRunning = (install) =>
-  Boolean(install) && !installStopped(install) && !["done", "waiting"].includes(install.phase);
+  Boolean(install) && !["done", "waiting", "failed", "cancelled"].includes(install.phase);
+
+/** Whether a region's row offers Update: installed, with an update to download or to put in
+ * place (r.changed), neither its install running nor queued. « Update all » takes those not ready
+ * for Live's next start (updateAllIds). */
+const offersUpdate = (r, mine, install) => Boolean(mine) && Boolean(r.changed) && !r.queued
+  && !(installRunning(install) && install.region === r.id);
 
 /**
  * What the regions' title says beside it, folded or open, and what needs the pilot there, a word
  * each, which opens the list by itself (foldOpen): none installed, an update to download or one
  * ready for Live's next start, the last start that could not put it in place, an install running
- * or stopped (or one that failed in line, `failed`), the list of regions not come. Every word known
- * once the host's list came (`known`, foldSection: its regions say what they download), the
+ * or stopped, a region whose install failed (r.failed), the list of regions not come. Every word
+ * known once the host's list came (`known`, foldSection: its regions say what they download), the
  * updates said by it alone. Its badges: how many regions are installed, then how many updates, in
  * the accent's colour, the warning's for one held back; the first in the warning's colour where
  * the list did not come or an install failed. A region read as its row reads it (regionRow).
@@ -1023,15 +1030,13 @@ export function regionsSummary(regions) {
     }
   }
   if (installRunning(install)) needs.push(`install:${install.region}`);
-  else if (installStopped(install)) needs.push(`${install.phase}:${install.region}`);
-  // an install that failed in line, said by its row once the next took the place
-  const failed = (regions?.list || []).filter((r) => r.failed).map((r) => `failed:${r.id}`);
-  needs.push(...failed.filter((need) => !needs.includes(need)));
+  else if (installCancelled(install)) needs.push(`cancelled:${install.region}`);
+  const failed = (regions?.list || []).filter((r) => r.failed);
+  needs.push(...failed.map((r) => `failed:${r.id}`));
   const n = mine.size;
   const installed = n === 0 ? t("regions.badge_none") : n === 1 ? t("regions.badge_one")
     : t("regions.badge_installed", { n: number(n) });
-  const warn = regions?.error || install?.phase === "failed" || failed.length;
-  const badges = [{ text: installed, kind: warn ? "warn" : null }];
+  const badges = [{ text: installed, kind: regions?.error || failed.length ? "warn" : null }];
   if (updates) {
     const text = updates === 1 ? t("regions.badge_update") : t("regions.badge_updates", { n: number(updates) });
     badges.push({ text, kind: held ? "warn" : "running" });
@@ -1041,13 +1046,13 @@ export function regionsSummary(regions) {
 }
 
 /** What a region's row shows: its name and size, its state, its buttons, and the line under it
- * (the install's progress, its place in the line, or an update waiting whole). Plain data: the rows
- * are drawn again only when it changes, so that a button under the pointer is not replaced while
- * it is clicked (the bytes of a download change every second: they go to the line, never to the
- * row's shape). Install and Update stay offered while another install runs: the click puts the
- * region in line (orthostudio/live/control.py install_region). `lined`: regions wait in line, which
- * the running install's Stop takes out too. */
-function regionRow(id, mine, r, install, running, idle, xplane, folder, lined) {
+ * (the install's progress, its place in the queue, or an update waiting whole). Plain data: the
+ * rows are drawn again only when it changes, so that a button under the pointer is not replaced
+ * while it is clicked (the bytes of a download change every second: they go to the line, never to
+ * the row's shape). Install and Update stay offered while another install runs: the click queues
+ * the region (orthostudio/live/control.py install_region). `anyQueued`: regions wait in the queue,
+ * which the running install's Stop empties too. */
+export function regionRow(id, mine, r, install, running, idle, xplane, folder, anyQueued) {
   const busy = Boolean(install) && install.region === id;
   const name = t(`region.${id}`);
   const ready = Boolean(mine) && updateReady(r);
@@ -1077,51 +1082,49 @@ function regionRow(id, mine, r, install, running, idle, xplane, folder, lined) {
   } else if (armed) {
     sure = t("regions.confirm_remove", { name });
   }
+  // each Delete greyed by the rule of every deletion (Live stopped, no install running, X-Plane
+  // closed: control.py _deleting), and while the region is queued, which its line's Cancel ends
+  const deleteOff = !idle || running || xplane || Boolean(queued);
+  const deleteWhy = queued ? t("regions.queued_delete") : null;
   if (busy && running) {
-    buttons.push({ act: "cancel", label: t("regions.cancel"), title: lined ? t("regions.cancel_all") : null });
+    buttons.push({ act: "cancel", label: t("regions.cancel"), title: anyQueued ? t("regions.cancel_all") : null });
   } else if (mine) {
-    if (r.changed && !queued) buttons.push({ act: "update", label: t("regions.update"), disabled: !idle || folder });
-    buttons.push({ act: armed ? "remove" : "arm", danger: true, disabled: !idle || running || xplane || Boolean(queued),
+    if (offersUpdate(r, mine, install)) buttons.push({ act: "update", label: t("regions.update"), disabled: !idle || folder });
+    buttons.push({ act: armed ? "remove" : "arm", danger: true, disabled: deleteOff, title: deleteWhy,
       label: armed ? t("regions.remove_sure") : t("regions.remove") });
   } else if (r.download && !queued) {
     buttons.push({ act: "install", label: t("regions.install"), disabled: folder });
   }
   // the button that goes on after a stop, which its line names
   const again = t(mine ? "regions.update" : "regions.install");
-  // the line: the install of this region while it runs, its place in the line with the button that
-  // takes it out, why its install ended short (stopped, failed; failed in line, said once the next
-  // took the place), or its update waiting whole. None once it is done, the row saying
+  // the line: the install of this region while it runs, its place in the queue with the button
+  // that takes it out, why its install ended short (stopped by its Stop; failed, the region's own
+  // word, r.failed), or its update waiting whole. None once it is done, the row saying
   // « Installed » (a line « used from the next start » was read as « restart the app »,
   // 2026-11-18), nor while it waits: the disk says that
   const line = busy && running ? { install: true }
     : queued ? { text: queued === 1 ? t("regions.queued_next") : t("regions.queued", { n: number(queued) }),
       button: { act: "unqueue", label: t("regions.unqueue") } }
-    : busy && installStopped(install) ? { install: true }
+    : busy && installCancelled(install) ? { text: t("regions.cancelled", { button: again }) }
     : r.failed ? { text: t("regions.failed", { error: r.failed, button: again }), warn: true }
     : ready ? { text: [t("regions.waiting"), ...(r.held ? [t("regions.held", { why: r.held })] : [])].join(" "),
       warn: Boolean(r.held) } : null;
-  // its kept old mesh, under it: its size and its own Delete, which deletes it alone, by the rule
-  // of every deletion (Live stopped, no install of it, X-Plane closed: control.py _deleting)
+  // its kept old mesh, under it: its size and its own Delete, which deletes it alone
   const kept = mine && r.kept ? {
     text: r.kept.size ? t("regions.kept_size", { gb: gb(r.kept.size) }) : t("regions.kept"),
-    button: { act: "remove_kept", label: t("regions.remove"), danger: true, disabled: !idle || running || xplane },
+    button: { act: "remove_kept", label: t("regions.remove"), danger: true, disabled: deleteOff, title: deleteWhy },
   } : null;
   return { id, size, state, buttons, line, bar: busy && running, kept, sure, again };
 }
 
-/**
- * The regions « Update all » puts in line, in the list's order: those installed whose row offers
- * Update now (an update to download or to put in place, regionRow), neither running nor in line
- * already, nor ready for Live's next start (updateReady: nothing to do before it). Its button shows
- * for two or more.
- */
+/** The regions « Update all » queues, in the list's order: those whose row offers Update
+ * (offersUpdate) but for one ready for Live's next start (updateReady: nothing to do before it).
+ * Its button shows for two or more. */
 export function updateAllIds(regions) {
   const mine = new Set((regions?.ours || []).map((r) => r.id));
-  const install = regions?.install;
-  const running = installRunning(install) ? install.region : null;
   return REGION_ORDER.filter((id) => {
     const r = (regions?.list || []).find((x) => x.id === id);
-    return Boolean(r) && mine.has(id) && Boolean(r.changed) && !r.queued && id !== running && !updateReady(r);
+    return Boolean(r) && offersUpdate(r, mine.has(id), regions?.install) && !updateReady(r);
   });
 }
 
@@ -1138,7 +1141,7 @@ function askRegion({ title, lines, yes = null, no, danger = false }) {
   });
 }
 
-let roomAsked = false; // the room of an update being asked: one at a time
+let askingUpdate = false; // an update's questions being asked (Update, Update all): one at a time
 
 /**
  * Update. Where the update makes the region whole beside it (r.whole), the room it lacks, asked
@@ -1149,12 +1152,12 @@ let roomAsked = false; // the room of an update being asked: one at a time
  * « Don't keep » the default: keeping it is a rename, which takes no room.
  */
 async function updateRegion(id, button) {
-  if (roomAsked) return;
-  roomAsked = true;
+  if (askingUpdate) return;
+  askingUpdate = true;
   try {
     await updateAsked(id, button);
   } finally {
-    roomAsked = false;
+    askingUpdate = false;
   }
 }
 
@@ -1229,14 +1232,14 @@ function askKeep(whole, makeRoom) {
 }
 
 /**
- * « Update all »: the regions it takes (updateAllIds) put in line in one go, « Keep the old mesh? »
+ * « Update all »: the regions it takes (updateAllIds) queued in one go, « Keep the old mesh? »
  * asked once for those whose update replaces the mesh (r.whole), with no room asked: each install
  * checks its room as it starts, and one short of it stops on its own line, the others going on
  * (its own Update then asks the room question). Each region's click is the one any Update sends.
  */
 async function updateAll() {
-  if (roomAsked) return;
-  roomAsked = true;
+  if (askingUpdate) return;
+  askingUpdate = true;
   try {
     const regions = last?.regions || {};
     const ids = updateAllIds(regions);
@@ -1257,14 +1260,14 @@ async function updateAll() {
         got = await api(`regions/${row.id}/install`, { method: "POST",
           body: { keep_old: keepOld && Boolean(row.r.whole), make_room: false } });
       } catch (error) {
-        refused ??= error; // said under the list, the others put in line all the same
+        refused ??= error; // said under the list, the others queued all the same
       }
     }
     if (got && last) draw({ ...last, regions: got });
     liveMap?.regionsChanged();
     if (refused) regionsError(refused);
   } finally {
-    roomAsked = false;
+    askingUpdate = false;
   }
 }
 
@@ -1292,7 +1295,7 @@ function regionAction(id, act) {
 }
 
 /** A line under a region's row with its own button, {text, button}: its kept old mesh with its
- * Delete, or its place in the line with the button that takes it out. */
+ * Delete, or its place in the queue with the button that takes it out. */
 function regionSubLine(id, { text, button: b }) {
   const line = document.createElement("div");
   line.className = "region-sub";
@@ -1300,7 +1303,7 @@ function regionSubLine(id, { text, button: b }) {
   words.textContent = text;
   const act = document.createElement("span");
   act.className = "region-actions";
-  act.append(regionButton(b.label, regionAction(id, b.act), { danger: b.danger, disabled: b.disabled }));
+  act.append(regionButton(b.label, regionAction(id, b.act), { danger: b.danger, disabled: b.disabled, title: b.title }));
   line.append(words, act);
   return line;
 }
@@ -1321,9 +1324,9 @@ function drawRegions(status) {
   if (regions.error) $("regions-error").textContent = t("regions.error", { error: regions.error });
   const xplane = Boolean(status.checks?.xplane_running); // deleting waits for it to quit: it reads the region
   const folder = Boolean(status.checks?.folder_problem); // Live's folder unfit: nothing to install into
-  const lined = [...listed.values()].some((r) => r.queued);
+  const anyQueued = [...listed.values()].some((r) => r.queued);
   const rows = ids.map((id) => regionRow(id, ours.get(id), listed.get(id) || { id, installed: ours.has(id) },
-    install, running, idle, xplane, folder, lined));
+    install, running, idle, xplane, folder, anyQueued));
   // « Update all » for two updates or more to start, greyed as each Update is (regionRow)
   $("regions-all").hidden = updateAllIds(regions).length < 2;
   $("regions-update-all").disabled = !idle || folder;
@@ -1382,7 +1385,7 @@ function drawRegions(status) {
         li.append(sure);
       }
       if (row.kept) li.append(regionSubLine(row.id, row.kept));
-      if (row.line?.button) li.append(regionSubLine(row.id, row.line)); // its place in the line
+      if (row.line?.button) li.append(regionSubLine(row.id, row.line)); // its place in the queue
       else if (row.line) {
         const line = document.createElement("p");
         line.className = "question-help region-progress";
@@ -1412,20 +1415,15 @@ function drawRegions(status) {
     : ours.size && xplane ? t("regions.wait_xplane") : "";
   if ($("regions-why").textContent !== why) $("regions-why").textContent = why;
   $("regions-why").hidden = !why;
-  if (install && $("region-progress")) {
+  if (running && $("region-progress")) { // the install under way's progress, its end said by its row
     const line = $("region-progress");
-    line.classList.toggle("is-warn", install.phase === "failed");
     if (install.phase === "deleting") line.textContent = t("regions.deleting"); // room made first
     else if (install.phase === "clearing") line.textContent = t("regions.clearing"); // stale stages
-    else if (running) {
+    else {
       // the pace while files come; none once only unpacking is left
       const pace = install.mbs >= 0.05 ? install.mbs : 0;
       line.textContent = t(pace ? "regions.progress_pace" : "regions.progress", { done: gb(install.done_bytes),
         total: gb(install.total_bytes), mbs: number(pace, 1), unpacked: install.unpacked, zips: install.zips });
-    } else {
-      const button = rows.find((row) => row.id === install.region)?.again;
-      line.textContent = install.phase === "failed" ? t("regions.failed", { error: install.error, button })
-        : t("regions.cancelled", { button });
     }
     if ($("region-bar")) {
       const share = install.total_bytes ? install.done_bytes / install.total_bytes : 0;

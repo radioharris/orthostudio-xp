@@ -1079,8 +1079,10 @@ X-Plane closed; so do the masks of rivers and lakes Soft banks downloads. The up
 region's old mesh beside the new one, to go back to it with « Mesh: Old » in the same tab; each mesh
 then has its own Delete, the region's deleting the new one, the old one taking its place. Where the
 disk lacks room for both, Live offers to delete the kept old mesh first, only when that is enough on
-every disk the update needs. While a region downloads, Start waits. Where none is installed, it can
-use other tools' meshes in AutoOrtho's format, from folders listed in the same tab in an order
+every disk the update needs. A region clicked while another installs waits in a queue and starts
+as the one before ends (« Update all » queues every update at once); while a region downloads or
+waits, Start waits. Where none is installed, it can use other tools' meshes in AutoOrtho's format,
+from folders listed in the same tab in an order
 (where two have a square, the higher one gives it), and on the squares clicked on its map, put in
 front of Live, that mesh instead of Live's own, with Live's photos. Your own tiles come first: where you built one, X-Plane shows it, and Live downloads
 nothing there.
