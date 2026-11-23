@@ -49,8 +49,8 @@ FAILED = 3
 HEDGE_S = 2.0
 # a source's server answering 403 this many times in a row refuses this computer (Esri's edge
 # answered « Access Denied » to a user's address, 2026-10-07); a 403 now and then among its images
-# is a piece it lacks. As many requests in a row answered nothing or 403, and no other answer for
-# DEAD_S: the chosen source answers nothing at all (Downloader._silent)
+# is a piece it lacks. As many requests in a row answered nothing, and no answer for DEAD_S: the
+# chosen source answers nothing at all (Downloader._silent)
 REFUSED_IN_A_ROW = 32
 DEAD_S = 20.0  # requests on their way and no answer for this long: the connections are dead
 WATCH_S = 2.0  # how often that is looked at
@@ -101,11 +101,13 @@ class Downloader:
         self._last_answer = self._busy_since = time.monotonic()
         self.renewed = 0
         self._renewed_said = 0.0
-        # the chosen source: its requests in a row answered nothing or 403, its last other answer
-        # (or first ask), and since when it answers nothing at all (_silent, said by _watch)
+        # the chosen source: its requests in a row answered nothing, its last answer (or the first
+        # ask after a quiet time), its last ask, and whether it answers nothing at all (_silent, as
+        # _watch last found it)
         self._unanswered = 0
-        self._heard: float | None = None
-        self.silent_since: float | None = None
+        self._heard = 0.0
+        self._asked = -float("inf")
+        self._silent_now = False
         self._came_at = self._failed_at = -float("inf")  # a piece downloaded, one failed (failing)
         # a piece of this priority waits while it says so: every one while X-Plane loads scenery,
         # those ahead of what it shows while its workers are all busy (Streamer.holds)
@@ -135,17 +137,18 @@ class Downloader:
         before, a refusal read as « is the internet there? » in the log (2026-10-08)."""
         return [name for name, n in tuple(self._refusals.items()) if n >= REFUSED_IN_A_ROW]
 
-    def unanswered(self) -> dict | None:
-        """The chosen source while it answers nothing at all (:meth:`_silent`, as :meth:`_watch`
-        last found it), for the Live window: {"source": its name}."""
-        return None if self.silent_since is None else {"source": self.p.name or self.p.code}
+    def unanswered(self) -> str | None:
+        """The chosen source's name while it answers nothing at all (:meth:`_silent`, as
+        :meth:`_watch` last found it): the Live window says so."""
+        return (self.p.name or self.p.code) if self._silent_now else None
 
     def failing(self) -> bool:
-        """Whether downloads fail now: a piece failed every try within FAILING_S and none came in
-        that time. Live's window said so only when nothing had ever come: 13 pieces early in a
-        flight, then 12,928 failed, and it never did (2026-11-22)."""
+        """Whether downloads fail now: the chosen source answers nothing at all, or a piece failed
+        every try within FAILING_S and none came in that time. Live's window said so only when
+        nothing had ever come: 13 pieces early in a flight, then 12,928 failed, and it never did
+        (2026-11-22)."""
         now = time.monotonic()
-        return now - self._failed_at < FAILING_S <= now - self._came_at
+        return self._silent_now or now - self._failed_at < FAILING_S <= now - self._came_at
 
     def close(self) -> None:
         if self._thread.is_alive():
@@ -214,23 +217,22 @@ class Downloader:
 
     def _silent(self, now: float) -> bool:
         """Whether the chosen source answers nothing at all: REFUSED_IN_A_ROW requests in a row
-        timed out, refused or answered 403, and no other answer from it for DEAD_S. A piece slow
-        or failing while others come, or a moment the line stops, is not."""
-        heard = self._heard
-        return self._unanswered >= REFUSED_IN_A_ROW and heard is not None and now - heard >= DEAD_S
+        timed out or refused, and no answer from it for DEAD_S, counted from the first ask after a
+        quiet time (:meth:`_get`). A piece slow or failing while others come, or a moment the line
+        stops, is not; a 403 is the refusal's rule (:meth:`refusing`)."""
+        return self._unanswered >= REFUSED_IN_A_ROW and now - self._heard >= DEAD_S
 
     def _follow(self, now: float) -> None:
-        """The chosen source answering nothing, or answering again, said in the log once each (a
-        refusal is said as it comes, :meth:`_answered`)."""
+        """The chosen source answering nothing, or answering again, said in the log once each."""
         silent, name = self._silent(now), self.p.name or self.p.code
-        if silent == (self.silent_since is not None):
+        if silent == self._silent_now:
             return
-        self.silent_since = now if silent else None
+        self._silent_now = silent
         if self.log is None:
             return
         if not silent:
             self.log(f"  {name} answers again")
-        elif name not in self.refusing():
+        else:
             self.log(
                 f"  {name} does not answer ({self.last_error or 'no answer'}): if the internet "
                 "works, stop Live and choose another source"
@@ -274,8 +276,11 @@ class Downloader:
             self._busy_since = time.monotonic()
         self.in_flight += 1
         chosen = p is self.p
-        if chosen and self._heard is None:
-            self._heard = time.monotonic()  # its first ask
+        if chosen:
+            now = time.monotonic()
+            if now - self._asked > DEAD_S:  # asked again after a quiet time: counted from now
+                self._heard = now
+            self._asked = now
         try:
             r = await self._session.get(url, headers=dict(p.headers))
         except asyncio.CancelledError:
@@ -288,9 +293,7 @@ class Downloader:
         finally:
             self.in_flight -= 1
         self._last_answer = time.monotonic()
-        if chosen and r.status_code == 403:
-            self._unanswered += 1
-        elif chosen:
+        if chosen and r.status_code != 403:  # a 403 is the refusal's (_answered)
             self._heard, self._unanswered = self._last_answer, 0
         return r
 

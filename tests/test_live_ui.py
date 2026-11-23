@@ -1166,63 +1166,28 @@ def test_a_start_says_what_it_does_the_textures_set_to_a_new_zoom_included() -> 
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
-def test_the_window_says_a_source_refuses_this_computer() -> None:
-    """While Live runs, a source whose server refuses this computer (403, access denied) is said
-    under the source, in OrthoStudio XP's words for its map, with what to do; the textures' label
-    says their downloads are refused. Nothing is said otherwise, or once Live stops."""
-    refused = _streaming(refused_by=["Esri World Imagery"])
+def test_the_window_says_what_goes_wrong_with_the_source() -> None:
+    """While Live runs: a source whose server refuses this computer (403, access denied) is said
+    under the source, in OrthoStudio XP's words for its map, with what to do, the textures' label
+    saying their downloads are refused; the chosen source answering nothing at all is said too,
+    with what to do, and downloads failing (also when pieces fail now while some came before: 13
+    early in a flight, then 12,928 failed, and it was never said). Nothing is said otherwise, or
+    once Live stops."""
+    statuses = [
+        _streaming(refused_by=["Esri World Imagery"]),
+        _streaming(unanswered="Esri World Imagery", failing=True),
+        _streaming(failing=True),
+        _streaming(),
+    ]
     stopped = {"state": "idle", "checks": {"xplane_running": False}}
     script = (
         f"import {{ sourceText, buildView }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
         f"import {{ setLanguage }} from {json.dumps((UI_DIR / 'strings.js').as_uri())};"
-        f"const all = {json.dumps([refused, _streaming(), stopped])}; const out = {{}};"
+        f"const all = {json.dumps(statuses)}; const stopped = {json.dumps(stopped)};"
+        " const out = {};"
         "for (const lang of ['en', 'fr']) { setLanguage(lang);"
-        " out[lang] = [all.map(sourceText), buildView(all[0]).state]; }"
-        "console.log(JSON.stringify(out));"
-    )
-    out = subprocess.run(
-        [NODE or "node", "--input-type=module", "-e", script],
-        capture_output=True,
-        encoding="utf-8",
-        check=True,
-    )
-    said = json.loads(out.stdout)
-    assert said["fr"] == [
-        [
-            "Esri World Imagery refuse votre connexion (accès refusé) : arrêtez Live et "
-            "choisissez une autre source en attendant.",
-            "",
-            "",
-        ],
-        ["Téléchargements refusés", "fail"],
-    ]
-    assert said["en"][0][0] == (
-        "Esri World Imagery refuses your connection (access denied): stop Live and choose "
-        "another source meanwhile."
-    )
-    assert said["en"][1] == ["Downloads refused", "fail"]
-    html = (UI_DIR / "index.html").read_text()
-    source = html[html.index('id="set-provider"') : html.index('id="source-error"')]
-    assert 'class="error-inline" id="source-trouble" role="alert" hidden' in source
-
-
-@pytest.mark.skipif(NODE is None, reason="needs node")
-def test_the_window_says_a_source_answers_nothing() -> None:
-    """While the chosen source answers nothing at all, the window says so under the source with
-    what to do, and the textures' label says downloads fail; it says so too when pieces fail now,
-    not only when none ever came (13 came early in a flight, then 12,928 failed, and it was never
-    said)."""
-    statuses = [
-        _streaming(unanswered={"source": "Esri World Imagery"}),
-        _streaming(failing=True),  # pieces downloaded before, failing now
-        _streaming(),
-    ]
-    script = (
-        f"import {{ sourceText, buildView }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
-        f"import {{ setLanguage }} from {json.dumps((UI_DIR / 'strings.js').as_uri())};"
-        f"const all = {json.dumps(statuses)}; const out = {{}};"
-        "for (const lang of ['en', 'fr']) { setLanguage(lang);"
-        " out[lang] = all.map((s) => [sourceText(s), buildView(s).state]); }"
+        " out[lang] = [...all.map((s) => [sourceText(s), buildView(s).state]),"
+        " [sourceText(stopped), buildView(stopped)]]; }"
         "console.log(JSON.stringify(out));"
     )
     out = subprocess.run(
@@ -1234,18 +1199,34 @@ def test_the_window_says_a_source_answers_nothing() -> None:
     said = json.loads(out.stdout)
     assert said["en"] == [
         [
+            "Esri World Imagery refuses your connection (access denied): stop Live and choose "
+            "another source meanwhile.",
+            ["Downloads refused", "fail"],
+        ],
+        [
             "Esri World Imagery does not answer: if your internet connection works, stop Live "
             "and choose another source.",
             ["Downloads failing", "fail"],
         ],
         ["", ["Downloads failing", "fail"]],
         ["", ["Building", "running"]],
+        ["", None],
     ]
-    assert said["fr"][0] == [
-        "Esri World Imagery ne répond pas : si votre connexion internet fonctionne, arrêtez "
-        "Live et choisissez une autre source.",
-        ["Téléchargements en échec", "fail"],
+    assert said["fr"][:2] == [
+        [
+            "Esri World Imagery refuse votre connexion (accès refusé) : arrêtez Live et "
+            "choisissez une autre source en attendant.",
+            ["Téléchargements refusés", "fail"],
+        ],
+        [
+            "Esri World Imagery ne répond pas : si votre connexion internet fonctionne, arrêtez "
+            "Live et choisissez une autre source.",
+            ["Téléchargements en échec", "fail"],
+        ],
     ]
+    html = (UI_DIR / "index.html").read_text()
+    source = html[html.index('id="set-provider"') : html.index('id="source-error"')]
+    assert 'class="error-inline" id="source-trouble" role="alert" hidden' in source
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node")

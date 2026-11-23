@@ -39,13 +39,26 @@ class DeadSession:
         self.closed = True
 
 
+class Refused(Answer):
+    status_code = 403
+    content = b""
+
+
 class LiveSession:
+    """Answering every request with ``answer``; while ``up`` is False, refusing every connection
+    (the source answers nothing)."""
+
+    up = True
+    answer: ClassVar[type] = Answer
+
     def __init__(self) -> None:
         self.asked = 0
 
     async def get(self, url, headers=None):
         self.asked += 1
-        return Answer()
+        if not LiveSession.up:
+            raise ConnectionError("curl: (7) Failed to connect: Connection refused")
+        return LiveSession.answer()
 
     async def close(self) -> None:
         pass
@@ -108,28 +121,6 @@ def test_a_quiet_time_is_not_a_dead_connection(monkeypatch: pytest.MonkeyPatch) 
 # --- a chosen source that answers nothing at all, said; downloads failing now
 
 
-class Server:
-    """The chosen source's server as one session: answering, or refusing every connection."""
-
-    def __init__(self) -> None:
-        self.up = True
-
-    async def get(self, url, headers=None):
-        if not self.up:
-            raise ConnectionError("curl: (7) Failed to connect: Connection refused")
-        return Answer()
-
-    async def close(self) -> None:
-        pass
-
-
-class OnServer(Downloader):
-    server: ClassVar[Server]
-
-    def _new_session(self):
-        return OnServer.server
-
-
 def _source():
     from orthostudio.live.providers import Provider
 
@@ -156,52 +147,84 @@ def _until(test, timeout: float = 5.0) -> bool:
     return test()
 
 
+def _on_good_sessions(monkeypatch: pytest.MonkeyPatch, **limits: float) -> None:
+    for name, value in {"WATCH_S": 0.05, **limits}.items():
+        monkeypatch.setattr(downloader_module, name, value)
+    Sessions.made = [None]  # good sessions only, answering as LiveSession says
+
+
 def test_a_source_that_answers_nothing_is_said_until_it_answers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """REFUSED_IN_A_ROW requests in a row refused and no answer for DEAD_S: the chosen source
-    answers nothing, said once in the log and to the window, until it answers again."""
-    monkeypatch.setattr(downloader_module, "DEAD_S", 0.5)
-    monkeypatch.setattr(downloader_module, "WATCH_S", 0.05)
-    monkeypatch.setattr(downloader_module, "REFUSED_IN_A_ROW", 4)
-    OnServer.server = server = Server()
-    server.up = False
+    answers nothing, said once in the log and to the window, downloads failing, until it answers
+    again."""
+    _on_good_sessions(monkeypatch, DEAD_S=0.5, REFUSED_IN_A_ROW=4)
+    monkeypatch.setattr(LiveSession, "up", False)
     lines: list[str] = []
     on_piece, wait = _answers()
-    d = OnServer(_source(), on_piece, max_in_flight=8, attempts=1, fallback=None, log=lines.append)
+    d = Sessions(_source(), on_piece, max_in_flight=8, attempts=1, fallback=None, log=lines.append)
     try:
         for x in range(6):
             d.submit((16, x, 7), float(x))
         wait(6)
         assert _until(lambda: d.unanswered() is not None)
-        assert d.unanswered() == {"source": "Source"}
+        assert d.unanswered() == "Source" and d.failing()
         said = [line for line in lines if "does not answer" in line]
         assert len(said) == 1 and "curl: (7)" in said[0]
         assert "stop Live and choose another source" in said[0]
-        server.up = True
+        monkeypatch.setattr(LiveSession, "up", True)
         d.submit((16, 9, 7), 0.0)
         assert wait(1)[0][1] == IMAGE
         assert _until(lambda: d.unanswered() is None)
-        assert any(line == "  Source answers again" for line in lines)
+        assert "  Source answers again" in lines
+    finally:
+        d.close()
+
+
+def test_a_quiet_time_then_a_moment_the_line_stops_is_not_said(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An answer, a quiet time longer than DEAD_S (over the sea, X-Plane loading, the Mac
+    asleep), then a few requests failing: counted from when they began, not from the answer
+    before the quiet time; said only once they fail for DEAD_S (the review of 2026-11-23)."""
+    _on_good_sessions(monkeypatch, DEAD_S=2.0, REFUSED_IN_A_ROW=4)
+    lines: list[str] = []
+    on_piece, wait = _answers()
+    d = Sessions(_source(), on_piece, max_in_flight=8, attempts=1, fallback=None, log=lines.append)
+    try:
+        d.submit((16, 0, 7), 0.0)
+        wait(1)  # an answer
+        time.sleep(2.5)  # a quiet time
+        monkeypatch.setattr(LiveSession, "up", False)  # the line drops a moment
+        t0 = time.monotonic()
+        for x in range(1, 5):
+            d.submit((16, x, 7), float(x))
+        wait(4)
+        assert not _until(lambda: d.unanswered() is not None, timeout=0.3)
+        x = 5
+        while time.monotonic() - t0 < 2.6:  # failing on: said DEAD_S after they began
+            d.submit((16, x, 7), float(x))
+            wait(1)
+            x += 1
+        assert _until(lambda: d.unanswered() is not None, timeout=1.0)
     finally:
         d.close()
 
 
 def test_a_moment_the_line_stops_is_not_said(monkeypatch: pytest.MonkeyPatch) -> None:
     """Many requests failing in a row, then an answer within DEAD_S: nothing said."""
-    monkeypatch.setattr(downloader_module, "DEAD_S", 2.0)
-    monkeypatch.setattr(downloader_module, "WATCH_S", 0.05)
-    OnServer.server = server = Server()
-    server.up = False
+    _on_good_sessions(monkeypatch, DEAD_S=2.0)
+    monkeypatch.setattr(LiveSession, "up", False)
     lines: list[str] = []
     on_piece, wait = _answers()
-    d = OnServer(_source(), on_piece, max_in_flight=64, attempts=1, fallback=None, log=lines.append)
+    d = Sessions(_source(), on_piece, max_in_flight=64, attempts=1, fallback=None, log=lines.append)
     try:
         n = downloader_module.REFUSED_IN_A_ROW + 8
         for x in range(n):
             d.submit((16, x, 7), float(x))
         wait(n)
-        server.up = True
+        monkeypatch.setattr(LiveSession, "up", True)
         d.submit((16, 100, 7), 0.0)
         assert wait(1)[0][1] == IMAGE
         time.sleep(0.3)
@@ -211,23 +234,41 @@ def test_a_moment_the_line_stops_is_not_said(monkeypatch: pytest.MonkeyPatch) ->
         d.close()
 
 
+def test_a_refusal_is_the_refusal_s_rule(monkeypatch: pytest.MonkeyPatch) -> None:
+    """403s in a row: refusing this computer, said as such, never « does not answer »."""
+    _on_good_sessions(monkeypatch, DEAD_S=0.2)
+    monkeypatch.setattr(LiveSession, "answer", Refused)
+    lines: list[str] = []
+    on_piece, wait = _answers()
+    d = Sessions(_source(), on_piece, max_in_flight=64, attempts=1, fallback=None, log=lines.append)
+    try:
+        n = downloader_module.REFUSED_IN_A_ROW + 8
+        for x in range(n):
+            d.submit((16, x, 7), float(x))
+        wait(n)
+        time.sleep(0.4)
+        assert d.refusing() == ["Source"] and d.unanswered() is None
+        assert not [line for line in lines if "does not answer" in line]
+    finally:
+        d.close()
+
+
 def test_downloads_failing_now_whatever_came_before(monkeypatch: pytest.MonkeyPatch) -> None:
     """Failing: a piece failed within FAILING_S and none came in it, whatever came before (13
     pieces early in a flight, then 12,928 failed, and the window never said it)."""
-    monkeypatch.setattr(downloader_module, "FAILING_S", 0.3)
-    OnServer.server = server = Server()
+    _on_good_sessions(monkeypatch, FAILING_S=0.3)
     on_piece, wait = _answers()
-    d = OnServer(_source(), on_piece, max_in_flight=2, attempts=1, fallback=None)
+    d = Sessions(_source(), on_piece, max_in_flight=2, attempts=1, fallback=None)
     try:
         assert not d.failing()
         d.submit((16, 1, 7), 0.0)
         wait(1)
-        server.up = False
+        monkeypatch.setattr(LiveSession, "up", False)
         time.sleep(0.35)  # what came is older than FAILING_S
         d.submit((16, 2, 7), 0.0)
         wait(1)
         assert d.downloaded == 1 and d.failing()
-        server.up = True
+        monkeypatch.setattr(LiveSession, "up", True)
         d.submit((16, 3, 7), 0.0)
         wait(1)
         assert not d.failing()

@@ -288,7 +288,7 @@ export function sourceText(status) {
   const s = status.state === "streaming" ? status.stream?.streamer : null;
   const refused = s?.refused_by || [];
   if (refused.length) return t("source.refused", { provider: refused.join(", ") });
-  return s?.unanswered ? t("source.silent", { provider: s.unanswered.source }) : "";
+  return s?.unanswered ? t("source.silent", { provider: s.unanswered }) : "";
 }
 
 let noticeDrawn = ""; // what the flight's notice says
@@ -382,7 +382,7 @@ export function buildView(status) {
   const starting = Boolean(stream.start && !stream.start.ready);
   let state = [t("build.state_nothing"), ""];
   if (s.refused_by?.length) state = [t("build.state_refused"), "fail"]; // said under the source
-  else if (s.failing || s.unanswered) state = [t("build.state_failed"), "fail"]; // the same
+  else if (s.failing) state = [t("build.state_failed"), "fail"];
   else if (s.urgent && !starting) state = [t("build.state_late", { n: number(s.urgent) }), "warn"];
   else if (queued || s.building) state = [t("build.state_building"), "running"];
   else if (built) state = [t("build.state_done"), "ok"];
