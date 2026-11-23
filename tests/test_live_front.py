@@ -358,6 +358,7 @@ def test_each_folder_once(tmp_path: Path, monkeypatch) -> None:
     the disk at each reading of the settings."""
     monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))  # « ~ » on Windows
     alps, pyrenees = tmp_path / "Alps", tmp_path / "Pyrenees"
     alps.mkdir()
     folder_link(alps, tmp_path / "Alps link")
