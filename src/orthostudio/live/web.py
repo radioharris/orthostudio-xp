@@ -449,7 +449,8 @@ def _in_the_browser(url: str, control: LiveControl, *, show: bool = True) -> Non
         while not control.gone():
             time.sleep(1)
     except KeyboardInterrupt:
-        control.close()  # the stream and the installs stopped, as the window's Quit stops them
+        pass
+    control.close()  # the stream and the installs stopped: nothing goes on after the process
     try:
         control.wait_idle()
     except KeyboardInterrupt:

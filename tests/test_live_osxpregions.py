@@ -197,7 +197,7 @@ def hidden(root: Path) -> list[str]:
 
 
 def test_a_region_installed_whole(tmp_path: Path, world, monkeypatch) -> None:
-    monkeypatch.setattr(osxpregions, "_pause", lambda attempt: None)
+    monkeypatch.setattr(osxpregions, "_pause", lambda attempt, stop=None: None)
     files, region = world
     host = Host(files, cut=100)  # the first file's line goes down: resumed where it stopped
     inst, lines = install(tmp_path, region, host)
@@ -261,12 +261,33 @@ def test_the_list_is_manifest_2_kept_apart_from_the_one_of_lives_before(
     assert again["eur"].mesh == region.mesh
 
 
+def test_a_stop_ends_the_tries_of_a_cut_line_at_once(tmp_path: Path) -> None:
+    """A stop while the line is cut ends the download at once: no other try, no pause waited out
+    (a quit during a cut once waited them all)."""
+    import threading
+
+    tries: list[int] = []
+    stop = threading.Event()
+
+    class Cut:
+        def stream(self, *args, **kwargs):
+            tries.append(1)
+            stop.set()  # the app quits as the line is down
+            raise httpx.ConnectError("the line is down")
+
+    z = Zip("eur/zips/z_osxp_eur_+45+005.zip", 10, "a" * 64, 17)
+    began = time.monotonic()
+    with pytest.raises(osxpregions.CancelledError):
+        osxpregions.fetch_zip(Cut(), "https://host", z, tmp_path / "a.zip", stop=stop)
+    assert tries == [1] and time.monotonic() - began < 1
+
+
 def test_a_fault_of_the_host_is_tried_again_as_a_cut_line_is(
     tmp_path: Path, world, monkeypatch
 ) -> None:
     """A 500 from the host no longer stops an install: tried again, as a cut line is; one that
     lasts stops it, said by its status alone."""
-    monkeypatch.setattr(osxpregions, "_pause", lambda attempt: None)
+    monkeypatch.setattr(osxpregions, "_pause", lambda attempt, stop=None: None)
     files, region = world
     inst, lines = install(tmp_path / "once", region, Host(files, failing=1))
     assert inst.progress.phase == "done", lines

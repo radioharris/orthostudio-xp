@@ -475,8 +475,8 @@ in a queue, with your answers to its questions. Its row says it waits and its pl
 **Cancel** to take it out; each one starts as the one before ends, whether that one ended well or
 not, and Start waits until the queue is done. **Stop** stops the install under way and empties the
 queue (when the queue waits for something other than an install, the first region waiting has the
-**Stop**); quitting the app does the same, after its question, and the region goes on from where it
-stopped the next time you click it. When two installed regions or more have an update to download, **Update all** queues
+**Stop**); quitting the app does the same, and the region goes on from where it stopped the next
+time you click it. When two installed regions or more have an update to download, **Update all** queues
 them all at once and asks only once whether to keep the old meshes (the question sums their
 sizes). It does not ask about room: each install checks it as it starts, and a region short of room
 stops on its own line with the usual message while the others go on; for an update that replaces

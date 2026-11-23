@@ -380,9 +380,13 @@ def unpack(source, dest: Path, prefix_after_top: str = "", stop: threading.Event
     return count
 
 
-def _pause(attempt: int) -> None:
-    """Before a download's next try: longer each time, 30 s at most."""
-    time.sleep(min(30.0, 2.0**attempt))
+def _pause(attempt: int, stop: threading.Event | None = None) -> None:
+    """Before a download's next try: longer each time, 30 s at most; cut short by ``stop``."""
+    delay = min(30.0, 2.0**attempt)
+    if stop is None:
+        time.sleep(delay)
+    else:
+        stop.wait(delay)
 
 
 class Installer:

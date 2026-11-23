@@ -377,6 +377,16 @@ def _size_of(folder: Path) -> int | None:
     return size if isinstance(size, int) else None
 
 
+def _join(thread: threading.Thread, timeout: float) -> None:
+    """``thread.join(timeout)``, a thread made the installs' holder under the lock and started just
+    after it waited for first: joined before its start, it raised."""
+    end = time.monotonic() + timeout
+    while thread.ident is None and time.monotonic() < end:
+        time.sleep(0.01)
+    if thread.ident is not None:
+        thread.join(max(0.0, end - time.monotonic()))
+
+
 class LiveControl:
     """One stream at a time, for the page. The session's steps and the checks can be replaced, for
     the tests."""
@@ -689,30 +699,36 @@ class LiveControl:
 
     def quit(self, *, force: bool = False) -> bool:
         """The app is being updated or removed (the Windows installer, ``stop_running.pas``), or
-        quit from its frame (``force``): stop, the installs too (:meth:`_stop_installs`), and let
-        the window and its process go (``leaving_for``). False, and nothing done, while a stream
-        feeds a running X-Plane, unless ``force``: the stream then stops without waiting for
-        X-Plane, which flies on over what is on the disk, and Live's line stays checked; the
-        plugin takes Live's links out of Custom Scenery at X-Plane's next start."""
+        quit (``force``: the frame's Quit, the app's): stop, and let the window and its process
+        go (``leaving_for``), whose end closes Live, its installs too (:meth:`close`). False, and
+        nothing done, while a stream feeds a running X-Plane, unless ``force``: the stream then
+        stops without waiting for X-Plane, which flies on over what is on the disk, and Live's
+        line stays checked; the plugin takes Live's links out of Custom Scenery at X-Plane's next
+        start."""
         flying = self._state != IDLE and xplane_running()
         if flying and not force:
             return False
         self.leaving_for = "quit"
         self.stop()
-        self._stop_installs()
         if flying:
             self.leave()
         return True
 
     def close(self) -> None:
         """The window's Quit, once the pilot said yes to its question, as OrthoStudio XP's, and
-        the window or the app gone another way (``web``): a stream stops as Stop stops it (Live
-        waits for X-Plane to quit when X-Plane reads the pack, which comes out then), the installs
-        too (:meth:`_stop_installs`), and the window goes once that is done (:meth:`gone`)."""
+        every end of the process (``web``): a stream stops as Stop stops it (Live waits for
+        X-Plane to quit when X-Plane reads the pack, which comes out then), the window goes once
+        that is done (:meth:`gone`); the installs stop as the window's Stop stops them, the night
+        grids' own download too, each going on from there the next time, waited for as the
+        process ends (:meth:`wait_idle`). A Quit during an install let it go on unseen after the
+        window: Python, ending, ran its download pool's whole queue of zips, then cut the
+        install's thread, the region left without its overlays and the regions queued behind it
+        dropped unsaid (2026-11-23)."""
         self.closing = True
         if self._state != IDLE:
             self.stop()
-        self._stop_installs()
+        self.cancel_install()
+        self._stop_night_grids(wait=False)
 
     def gone(self) -> bool:
         """Whether the window and its process go: the welcome's answer was OrthoStudio XP's
@@ -953,8 +969,7 @@ class LiveControl:
 
     def _stop_night_grids(self, *, wait: bool = True) -> None:
         """The quiet download of night grids stopped, for the pilot's install or delete (waited
-        for, ``wait``) or Live going (:meth:`_stop_installs`): it goes on from there the next
-        time."""
+        for, ``wait``) or Live closing (:meth:`close`): it goes on from there the next time."""
         with self._lock:
             if not self._quiet:
                 return
@@ -964,7 +979,7 @@ class LiveControl:
         if installer is not None:
             installer.cancel()
         if thread is not None and wait:
-            thread.join(INSTALL_STOP_S)
+            _join(thread, INSTALL_STOP_S)
 
     def regions(self, *, fetch: bool = False) -> dict[str, Any]:
         """OrthoStudio XP's regions as the page lists them: those installed (:func:`our_regions`,
@@ -1248,15 +1263,6 @@ class LiveControl:
         if installer is not None:
             installer.cancel()
 
-    def _stop_installs(self) -> None:
-        """Live going (:meth:`quit`, :meth:`close`): the installs stop as the window's Stop stops
-        them (:meth:`cancel_install`), the night grids' own download too, each going on from there
-        the next time; waited for as the process ends (:meth:`wait_idle`). Quitting during an
-        install let it go on unseen after the window, then end halfway as the process did, its
-        overlays never put in place and the regions queued behind it dropped unsaid (2026-11-23)."""
-        self.cancel_install()
-        self._stop_night_grids(wait=False)
-
     def unqueue_region(self, region_id: str) -> None:
         """A region taken out of the window's queue, its install never started. Nothing done where
         it is not in it: its turn may have come as the window asked (its Stop then stops it)."""
@@ -1411,22 +1417,23 @@ class LiveControl:
                 raise session.RefusedError(str(e)) from e
 
     def wait_idle(self, timeout: float | None = None) -> bool:
-        """The stream's thread waited for, then the thread holding the installs' place, at most
-        :data:`INSTALL_STOP_S` (an install told to stop: :meth:`_stop_installs`): a process
-        ending with it alive had Python run all of its downloads' queue before going. Whether
-        nothing streams nor installs."""
+        """The stream's thread waited for, then whatever holds the installs' place, told to stop
+        (:meth:`close`), :data:`INSTALL_STOP_S` at most; ``timeout`` for both. Whether nothing
+        streams nor installs."""
+        given = None if timeout is None else time.monotonic() + timeout
         thread = self._thread
         if thread is not None:
             thread.join(timeout)
-        bound = INSTALL_STOP_S if timeout is None else min(timeout, INSTALL_STOP_S)
-        end = time.monotonic() + bound
+        end = time.monotonic() + INSTALL_STOP_S
+        if given is not None:
+            end = min(end, given)
         while (left := end - time.monotonic()) > 0:
             # read again each time: a click's thread holds the place a moment as its install starts
             with self._lock:
                 holder = self._install_thread
-            if holder is None or holder is threading.current_thread():
+            if holder is None:
                 break
-            holder.join(min(0.1, left))
+            _join(holder, min(0.1, left))
         with self._lock:
             return self._state == IDLE and not self._installing()
 

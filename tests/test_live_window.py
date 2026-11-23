@@ -95,8 +95,7 @@ def opened(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         live.control = control
         monkeypatch.setattr(web, "_here", live)  # Live in this program, as the app's start sets up
         web._in_a_window("http://127.0.0.1:1/", control)
-        # the window's own close as it goes, undone: the fake window went at once
-        control.stopped, control.closing = 0, False
+        control.closing = False  # the window's own close as it goes: the fake one went at once
         return given, done, control
 
     return open_on
@@ -218,6 +217,7 @@ def test_in_the_browser_it_ends_as_in_a_window(
     assert not ended.wait(1.5)
     control.leaving_for = leaving_for
     assert ended.wait(5.0)
+    assert control.closing  # closed as it ends: no install goes on after the process
 
 
 def test_in_the_browser_the_app_s_live_goes_a_while_after_its_page(

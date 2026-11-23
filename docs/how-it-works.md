@@ -1082,7 +1082,7 @@ disk lacks room for both, Live offers to delete the kept old mesh first, only wh
 every disk the update needs. A region clicked while another installs waits in a queue and starts
 as the one before ends (« Update all » queues every update still to download); while a region
 downloads or waits, Start waits. Stop, or quitting the app, stops the install and empties the queue;
-the region goes on from there the next time. Where none is installed, it can use other tools' meshes in
+the region goes on from there the next time you click it. Where none is installed, it can use other tools' meshes in
 AutoOrtho's format, from folders listed in the same tab in an order
 (where two have a square, the higher one gives it), and on the squares clicked on its map, put in
 front of Live, that mesh instead of Live's own, with Live's photos. Your own tiles come first: where you built one, X-Plane shows it, and Live downloads

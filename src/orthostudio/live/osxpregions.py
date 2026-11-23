@@ -621,10 +621,13 @@ def fetch_zip(
     stop: threading.Event | None = None,
 ) -> Path:
     """``z`` whole at ``path``, resumed where an earlier try stopped, checked; ``add`` told each
-    byte that comes (or goes, a part thrown away)."""
+    byte that comes (or goes, a part thrown away). ``stop`` stops it at the next megabyte, and
+    between two tries: a quit during a line's cut once waited out every try and pause."""
     import httpx
 
     for attempt in range(ATTEMPTS):
+        if stop is not None and stop.is_set():
+            raise CancelledError
         have = path.stat().st_size if path.exists() else 0
         if have > z.size:
             path.unlink()
@@ -656,7 +659,7 @@ def fetch_zip(
             again = isinstance(e, httpx.HTTPError) or (WINDOWS and isinstance(e, PermissionError))
             if not again or attempt == ATTEMPTS - 1:
                 raise InstallError(f"{z.local}: {_why(e)}") from e
-            _pause(attempt)
+            _pause(attempt, stop)
     size = path.stat().st_size
     if size != z.size:
         raise InstallError(f"{z.local} arrived incomplete ({size} of {z.size} bytes)")

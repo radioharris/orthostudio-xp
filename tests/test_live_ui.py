@@ -2222,31 +2222,53 @@ def test_stop_empties_the_queue_and_a_region_comes_out_of_it_alone(
     assert c.regions()["install"]["phase"] == "cancelled"
 
 
-@pytest.mark.parametrize("going", ["quit", "close"])
-def test_live_going_stops_its_installs_and_waits_for_them(
-    home: Path, tmp_path: Path, going: str
-) -> None:
-    """Live quit from the app's frame (``quit``), from its own window or gone with the app another
-    way (``close``): the install under way stops as the window's Stop stops it and the queue
-    empties, the call answering at once; the process's end waits for the install to be out
-    (``wait_idle``). Quit during an install let it go on unseen after the window, end halfway
-    with the process, and drop the regions queued behind it unsaid (2026-11-23)."""
+def test_closing_live_stops_its_installs_and_waits_for_them(home: Path, tmp_path: Path) -> None:
+    """Live closed, as every end of the process closes it: the install under way stops as the
+    window's Stop stops it and the queue empties, the call answering at once; the process's end
+    waits for the install to be out (``wait_idle``)."""
     c = queue_control(tmp_path / "X-Plane 12")
     c.install_region("eur", whole=False)
     c.install_region("sa", whole=False)
-    if going == "quit":
-        assert c.quit(force=True)
-    else:
-        c.close()
+    c.close()
     assert queued(c) == {"eur": None, "na": None, "sa": None, "afr": None}
-    assert c.wait_idle(5) and not c.installing() and not c.busy()
+    assert c.wait_idle(5)
     assert [made[0] for made in GatedInstaller.made] == ["eur"]
     assert c.regions()["install"]["phase"] == "cancelled"
 
 
-def test_live_going_stops_the_night_grids_and_starts_none_after(home: Path, tmp_path: Path) -> None:
-    """The night grids' own download stops as Live goes, waited for with the installs, and a read
-    of the list ending after Quit starts none."""
+class DeafInstaller(GatedInstaller):
+    """An install that hears no stop: it ends only as its gate opens."""
+
+    def run(self) -> None:
+        GatedInstaller.gates.setdefault(self.region.id, threading.Event()).wait(10)
+        self.phase = "done"
+
+
+def test_the_process_end_waits_for_an_install_a_bounded_time(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An install that does not stop is waited for :data:`INSTALL_STOP_S` at most: the process
+    ends all the same. A holder set under the lock and started just after is waited for, never
+    joined before its start (which raised)."""
+    monkeypatch.setattr(control_module, "INSTALL_STOP_S", 0.3)
+    c = queue_control(tmp_path / "X-Plane 12")
+    c._installer_of = DeafInstaller
+    c.install_region("eur", whole=False)
+    c.close()
+    began = time.monotonic()
+    assert not c.wait_idle()
+    assert time.monotonic() - began < 2
+    open_gate("eur")
+    wait_for(lambda: not c.installing())
+    later = threading.Thread(target=lambda: None)
+    with c._lock:
+        c._install_thread = later  # its start comes a moment after
+    threading.Timer(0.05, later.start).start()
+    c.wait_idle()  # waited for its start, then for it: no RuntimeError
+
+
+def night_grids_downloading(tmp_path: Path) -> LiveControl:
+    """Europe installed before its night grids, their quiet download under way."""
     import dataclasses
 
     from orthostudio.live.osxpregions import Zip
@@ -2257,6 +2279,15 @@ def test_live_going_stops_the_night_grids_and_starts_none_after(home: Path, tmp_
     put_region(c._catalog["eur"])
     c._fetch_night_grids(c._catalog)
     wait_for(lambda: c._installer is not None and c._installer.night_only)
+    return c
+
+
+def test_closing_live_stops_the_night_grids_and_starts_none_after(
+    home: Path, tmp_path: Path
+) -> None:
+    """The night grids' own download stops as Live closes, waited for with the installs, and a
+    read of the list ending after Quit starts none."""
+    c = night_grids_downloading(tmp_path)
     c.close()
     assert c.wait_idle(5) and c._install_thread is None
     c._fetch_night_grids(c._catalog)  # the list's read, ending after Quit
@@ -2287,16 +2318,7 @@ def test_a_region_queued_behind_the_night_grids_holds_start(
     """The night grids' own download not stopped in time (it is waited for 30 s): the region
     clicked is queued behind it, Start waits and the app keeps Live's process, and the region
     starts as the download ends."""
-    import dataclasses
-
-    from orthostudio.live.osxpregions import Zip
-
-    c = queue_control(tmp_path / "X-Plane 12")
-    grids = Zip("eur/night-zips/night_eur.zip", 2, "e" * 64, 5)
-    c._catalog["eur"] = dataclasses.replace(c._catalog["eur"], night=(grids,))
-    put_region(c._catalog["eur"])
-    c._fetch_night_grids(c._catalog)
-    wait_for(lambda: c._installer is not None and c._installer.night_only)
+    c = night_grids_downloading(tmp_path)
     assert not c.installing() and not c.busy()  # alone, it holds nothing
     monkeypatch.setattr(c, "_stop_night_grids", lambda: None)  # its stop not answered in time
     c.install_region("na", whole=False)
