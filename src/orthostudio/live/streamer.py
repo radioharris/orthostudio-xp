@@ -686,9 +686,8 @@ class Streamer:
         """A texture's night black again (NightWork.back_to_black), wanted again by the next plan
         at the level X-Plane reads, when it is night: a texture made coarser or neutral, set to a
         new zoom's size, or a night texture the disk budget takes on its own. Kept sharp under a
-        texture made
-        coarser, it took fifteen times its day texture (the review of 2026-11-11). Windows refusing
-        a file X-Plane holds open: said, and left as it was."""
+        texture made coarser, it took fifteen times its day texture (the review of 2026-11-11).
+        Windows refusing a file X-Plane holds open: said, and left as it was."""
         if self.night is None:
             return
         try:
@@ -2046,12 +2045,13 @@ class Arrival:
         night_left: int,
         done: float,
         squares: int = 0,
-        stalled: bool = False,
+        nothing_comes: bool = False,
     ) -> dict:
         """What a start waits for: its textures and its night ones, those all of whose photos are
         in, its progress, and the squares round it whose files are not made yet; ready when no
-        texture and no square is left; ``stalled``: X-Plane let go, no piece having come for
-        STALL_S (:func:`start_count`)."""
+        texture and no square is left. ``nothing_comes``: no piece for STALL_S
+        (:func:`start_count`); then ``stalled``, X-Plane let go, once no night texture is left
+        (NIGHT_WAIT_S at most)."""
         self.shown = {
             "left": left + night_left,
             "building": building + night_left,
@@ -2059,7 +2059,8 @@ class Arrival:
             "progress": done,
             "squares": squares,
             "ready": left + night_left == 0 and squares == 0,
-            "stalled": stalled,
+            "nothing_comes": nothing_comes,
+            "stalled": nothing_comes and not night_left,
         }
         return self.shown
 
@@ -2113,24 +2114,26 @@ def start_count(streamer: Streamer, arrival: Arrival, now: float, fresh: bool = 
     at most :data:`COUNT_EVERY_S` before, X-Plane held or not; the start is ready when no texture
     and no square is left. Live's window said ready, or nothing, while X-Plane waited for 8,700
     night textures, and its count stood still once X-Plane was let go (the review of
-    2026-11-11). ``stalled``: no piece for STALL_S, and no night texture left, counted from then
-    with NIGHT_WAIT_S running (NightWork.start_left)."""
+    2026-11-11). No piece for STALL_S: NIGHT_WAIT_S at most, then stalled (:meth:`Arrival.count`).
+    The night beginning here (the time the plugin read), the start is planned again at once: its
+    night textures counted with it."""
     if not fresh and arrival.shown is not None and now - arrival.counted < COUNT_EVERY_S:
         return arrival.shown
     arrival.counted = now
     left = streamer.urgent_left()
-    stalled = left > 0 and streamer.stalled_s() > STALL_S
+    nothing_comes = left > 0 and streamer.stalled_s() > STALL_S
     night_left, night = 0, False
     if streamer.night is not None:
+        was = streamer.night.night
         streamer.night.tick((arrival.lat, arrival.lon), arrival.held_time, streamer.built_copy)
-        night_left = streamer.night.start_left(0 if stalled else left)
+        if streamer.night.night and not was:
+            streamer.plan(Fix(arrival.lat, arrival.lon), x_plane_there=False, starting=True)
+        night_left = streamer.night.start_left(0 if nothing_comes else left)
         night = streamer.night.start_night
     done = arrival.progress(left, night_left, night)
     held_at = [arrival.held_at] if arrival.held_at is not None else []
     squares = streamer.squares_left((arrival.lat, arrival.lon), *held_at)
-    return arrival.count(
-        left, streamer.urgent_building(), night_left, done, squares, stalled and not night_left
-    )
+    return arrival.count(left, streamer.urgent_building(), night_left, done, squares, nothing_comes)
 
 
 def may_have_read_early(arrival: Arrival, xplane_started: float | None) -> bool:
@@ -2455,8 +2458,8 @@ def run(
                         left, building = shown["left"] - night_left, shown["building"] - night_left
                         done = shown["progress"]
                         # no time limit: X-Plane waits while pieces arrive, however long a start
-                        # takes, and goes on only once nothing has arrived for a minute
-                        # (start_count)
+                        # takes, and goes on only once nothing has arrived for a minute, then
+                        # NIGHT_WAIT_S at most for its night textures (start_count)
                         stalled = shown["stalled"]
                         # and the files of its squares made (orthostudio.live.names), where the
                         # start was chosen and where X-Plane says it loads it (shown["squares"],
@@ -2478,8 +2481,8 @@ def run(
                         if stalled and not arrival.stalled:
                             arrival.stalled = True
                             log(
-                                f"  nothing downloaded for {STALL_S:.0f} s: X-Plane goes on with "
-                                f"{left} textures to build around {arrival.name} "
+                                f"  nothing downloaded for {streamer.stalled_s():.0f} s: X-Plane "
+                                f"goes on with {left} textures to build around {arrival.name} "
                                 f"({why_nothing_comes(streamer.downloader)})"
                             )
                         elif ready and not arrival.released:
@@ -2488,7 +2491,7 @@ def run(
                                 f"  X-Plane goes on after {took:.0f} s: everything it reads "
                                 f"around {arrival.name} is built"
                             )
-                        elif left and now - last_wait >= 5:
+                        elif left and not shown["nothing_comes"] and now - last_wait >= 5:
                             last_wait = now
                             log(
                                 f"  X-Plane waits on its loading screen: {left} textures to build "
@@ -2543,8 +2546,8 @@ def run(
                         if stalled:
                             arrival.stalled = True
                             log(
-                                f"  nothing downloaded for {STALL_S:.0f} s: X-Plane goes on with "
-                                f"{left} textures to build around {arrival.name} "
+                                f"  nothing downloaded for {streamer.stalled_s():.0f} s: X-Plane "
+                                f"goes on with {left} textures to build around {arrival.name} "
                                 f"({why_nothing_comes(streamer.downloader)})"
                             )
                         else:
@@ -2558,6 +2561,12 @@ def run(
                         log(
                             f"  X-Plane waits, paused: the files of {squares} squares around "
                             f"{arrival.name} are being made"
+                        )
+                    elif now - last_wait >= 5 and shown["nothing_comes"]:
+                        last_wait = now
+                        log(
+                            f"  X-Plane waits, paused: {night_left} night textures to make around "
+                            f"{arrival.name} ({took:.0f} s)"
                         )
                     elif now - last_wait >= 5:
                         last_wait = now

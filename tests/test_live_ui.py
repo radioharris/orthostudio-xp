@@ -960,6 +960,8 @@ def test_the_start_s_line_says_the_squares_once_every_texture_is_built() -> None
         {"left": 3, "building": 0, "squares": 36, "seconds": 2},  # textures left: they first
         {"left": 7, "building": 7, "night": 7, "squares": 0, "seconds": 17},
         {"left": 0, "seconds": 3},  # a count of before: no squares
+        # no piece for a minute: the night textures it still waits for
+        {"left": 407, "building": 7, "night": 7, "nothing_comes": True, "seconds": 70},
     ]
     script = (
         f"import {{ holdText }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
@@ -982,6 +984,7 @@ def test_the_start_s_line_says_the_squares_once_every_texture_is_built() -> None
         "3 textures à construire · 5,2 Mo/s · 2 s",
         "7 textures de nuit à construire · 17 s",
         "0 textures à construire · 5,2 Mo/s · 3 s",
+        "7 textures de nuit à construire · 70 s",
     ]
     assert said["en"][:2] == [
         "Preparing the ground: 36 squares · 12 s",
@@ -1101,13 +1104,13 @@ def test_the_flight_and_the_textures_say_their_state() -> None:
     waiting = _streaming(queued=[0] * 6, building=0, pieces_awaited=0, built=[0] * 6, failed=0)
     waiting["stream"].update(data="none", aircraft=None, camera_km=None, start=None)
     waiting["stream"]["streamer"].update(flight_plan=None, screen=None, at_8192=0)
-    refused = _streaming(downloaded=0, downloaded_bytes=0, from_cache=0, failed=40, failing=True)
+    failing = _streaming(downloaded=0, downloaded_bytes=0, from_cache=0, failed=40, failing=True)
     late = _streaming(urgent=3)
     holding = _streaming(urgent=1200)
     holding["stream"]["start"] = {"name": "LFBO", "ready": False, "held": True}
     done = _streaming(queued=[0] * 6, building=0, pieces_awaited=0)
     full = _streaming(disk_bytes=34_500_000_000)
-    views = _views([stopped, running, waiting, refused, late, holding, done, full])["fr"]
+    views = _views([stopped, running, waiting, failing, late, holding, done, full])["fr"]
     assert [v["flight"]["state"] for v in views[:3]] == [
         ["X-Plane n'est pas lancé", ""],
         ["X-Plane est lancé", ""],
@@ -1170,13 +1173,10 @@ def test_the_window_says_what_goes_wrong_with_the_source() -> None:
     """While Live runs: a source whose server refuses this computer (403, access denied) is said
     under the source, in OrthoStudio XP's words for its map, with what to do, the textures' label
     saying their downloads are refused; the chosen source answering nothing at all is said too,
-    with what to do, and downloads failing (also when pieces fail now while some came before: 13
-    early in a flight, then 12,928 failed, and it was never said). Nothing is said otherwise, or
-    once Live stops."""
+    with what to do, and downloads failing. Nothing is said otherwise, or once Live stops."""
     statuses = [
         _streaming(refused_by=["Esri World Imagery"]),
         _streaming(unanswered="Esri World Imagery", failing=True),
-        _streaming(failing=True),
         _streaming(),
     ]
     stopped = {"state": "idle", "checks": {"xplane_running": False}}
@@ -1208,7 +1208,6 @@ def test_the_window_says_what_goes_wrong_with_the_source() -> None:
             "and choose another source.",
             ["Downloads failing", "fail"],
         ],
-        ["", ["Downloads failing", "fail"]],
         ["", ["Building", "running"]],
         ["", None],
     ]

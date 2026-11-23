@@ -245,8 +245,8 @@ def pick(
     """[(texture, new level)] bringing ``built`` to 90 % of ``budget``, or as close as it can:
     sharp textures ``coarsen`` allows back to 256 px, then 256 px ones ``neutral`` allows (the same
     when not given) back to the neutral clone, and the night textures ``lit`` counts on their own
-    (a stale texture's: made black, NEUTRAL_LEVEL); those ``behind`` the aircraft first, then the
-    least recently seen. ``top_of``, ``lit``, ``copied``, ``water``: what each file holds, as
+    (made black, NEUTRAL_LEVEL); those ``behind`` the aircraft first, then the least recently
+    seen. ``top_of``, ``lit``, ``copied``, ``water``: what each file holds, as
     :func:`usage` takes them; a texture made coarser has its night black, its copy gone and its
     water photo made from its new level (orthostudio.live.waterphoto.follow)."""
     lit, copied, water = lit or {}, frozenset(copied), water or {}

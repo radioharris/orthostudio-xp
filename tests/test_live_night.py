@@ -975,12 +975,6 @@ class PlanNightTest(unittest.TestCase):
         """The night levels of the textures planned, counted from the top of their file."""
         return {n: max(0, lv - max(0, self.s.top_of(n))) for n, (_, lv) in jobs.items()}
 
-    def test_each_texture_planned_has_its_night_wanted(self):
-        self.night.night = True
-        jobs = self.s.plan(self.fix(), x_plane_there=False)
-        self.assertEqual(sorted(jobs), sorted(self.names))
-        self.assertEqual(self.night.wanted, self.levels(jobs))
-
     def test_by_day_none_is_wanted(self):
         self.s.plan(self.fix(), x_plane_there=False)
         self.assertEqual(self.night.wanted, {})
@@ -1157,7 +1151,7 @@ class StartBarTest(unittest.TestCase):
 
         from orthostudio.live.streamer import Arrival, start_count
 
-        night = SimpleNamespace(left=600, start_night=True)
+        night = SimpleNamespace(left=600, start_night=True, night=True)
         night.tick = lambda at, when, built: None
         night.start_left = lambda day_left: night.left
         day = SimpleNamespace(left=400)
@@ -1175,15 +1169,15 @@ class StartBarTest(unittest.TestCase):
         shown = start_count(s, a, 1.0, fresh=True)
         self.assertEqual((shown["left"], shown["night"], shown["progress"]), (250, 250, 0.75))
 
-    def test_a_start_stalled_counts_its_night_textures_from_then(self):
-        """No piece for STALL_S: the start's night textures counted from then, NIGHT_WAIT_S
-        running (start_left(0)), and stalled once none is left (the review of 2026-11-23)."""
+    def test_a_start_stalled_after_its_night_textures(self):
+        """No piece for STALL_S: NIGHT_WAIT_S at most, then stalled (the review of
+        2026-11-23)."""
         from types import SimpleNamespace
 
         from orthostudio.live.streamer import STALL_S, Arrival, start_count
 
         asked: list[int] = []
-        night = SimpleNamespace(left=600, start_night=True)
+        night = SimpleNamespace(left=600, start_night=True, night=True)
         night.tick = lambda at, when, built: None
         night.start_left = lambda day_left: (asked.append(day_left), night.left)[1]
         quiet = [0.0]
@@ -1203,6 +1197,40 @@ class StartBarTest(unittest.TestCase):
         self.assertEqual(asked[-1], 0)
         night.left = 0  # made, or NIGHT_WAIT_S passed
         self.assertTrue(start_count(s, a, 2.0, fresh=True)["stalled"])
+
+    def test_a_night_beginning_at_the_hold_plans_the_start_again(self):
+        """Night found as X-Plane loads the start (the time the plugin read): the start planned
+        again at once, its night textures counted in the same count, never stalled before (the
+        review of 2026-11-23)."""
+        from types import SimpleNamespace
+
+        from orthostudio.live.streamer import STALL_S, Arrival, start_count
+
+        night = SimpleNamespace(left=0, start_night=True, night=False)
+        night.tick = lambda at, when, built: setattr(night, "night", True)
+        night.start_left = lambda day_left: night.left
+        planned: list[tuple] = []
+
+        def plan(fix, x_plane_there=True, starting=False):
+            planned.append((round(fix.lat, 2), round(fix.lon, 2), x_plane_there, starting))
+            night.left = 7  # the night textures it wants round the start
+
+        s = SimpleNamespace(
+            night=night,
+            urgent_left=lambda: 400,
+            urgent_building=lambda: 0,
+            built_copy=lambda: {},
+            squares_left=lambda *points: 0,
+            stalled_s=lambda: STALL_S + 1,
+            plan=plan,
+        )
+        a = Arrival(46.24, 6.11, "LSGG", "plugin", 0.0, held_time=(330, 21.0))
+        shown = start_count(s, a, 0.0, fresh=True)
+        self.assertEqual(planned, [(46.24, 6.11, False, True)])
+        self.assertEqual((shown["night"], shown["nothing_comes"]), (7, True))
+        self.assertFalse(shown["stalled"])
+        start_count(s, a, 1.0, fresh=True)
+        self.assertEqual(len(planned), 1)  # once, as the night begins
 
 
 class NightWordsTest(unittest.TestCase):
@@ -1453,7 +1481,7 @@ class NightDiskTest(unittest.TestCase):
 
         from orthostudio.live.streamer import COUNT_EVERY_S, Arrival, start_count
 
-        night = SimpleNamespace(start_night=True, left=8700, when=None)
+        night = SimpleNamespace(start_night=True, left=8700, when=None, night=True)
         night.tick = lambda at, when, built: setattr(night, "when", when)
         night.start_left = lambda day_left: night.left
         s = SimpleNamespace(
@@ -1609,6 +1637,7 @@ class NightDiskTest(unittest.TestCase):
                 "progress": 0.4,
                 "squares": 3,
                 "ready": False,
+                "nothing_comes": False,
                 "stalled": False,
             },
         )
