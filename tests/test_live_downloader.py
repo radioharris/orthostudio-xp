@@ -280,3 +280,17 @@ def test_downloads_failing_now_whatever_came_before(monkeypatch: pytest.MonkeyPa
         assert not d.failing()
     finally:
         d.close()
+
+
+def test_not_failing_while_pieces_come() -> None:
+    """A country's source answering nothing while the pieces beyond its bounds keep coming:
+    downloads are not failing (the review of 2026-11-23)."""
+    Sessions.made = [None]
+    d = Sessions(_source(), lambda *a: None, max_in_flight=2, fallback=None)
+    try:
+        d._silent_now = True
+        assert d.failing()  # nothing came
+        d._came_at = time.monotonic()  # a piece just came
+        assert not d.failing()
+    finally:
+        d.close()

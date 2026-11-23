@@ -145,11 +145,13 @@ class Downloader:
 
     def failing(self) -> bool:
         """Whether downloads fail now: the chosen source answers nothing at all, or a piece failed
-        every try within FAILING_S and none came in that time. Live's window said so only when
+        every try within FAILING_S, and none came in that time (a country's source silent, the
+        pieces beyond it coming, is not). Live's window said so only when
         nothing had ever come: 13 pieces early in a flight, then 12,928 failed, and it never did
         (2026-11-22)."""
         now = time.monotonic()
-        return self._silent_now or now - self._failed_at < FAILING_S <= now - self._came_at
+        failed = self._silent_now or now - self._failed_at < FAILING_S
+        return failed and now - self._came_at >= FAILING_S
 
     def close(self) -> None:
         if self._thread.is_alive():
