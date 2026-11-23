@@ -95,7 +95,8 @@ def opened(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         live.control = control
         monkeypatch.setattr(web, "_here", live)  # Live in this program, as the app's start sets up
         web._in_a_window("http://127.0.0.1:1/", control)
-        control.stopped = 0  # the window's own stop as it goes: the fake one went at once
+        # the window's own close as it goes, undone: the fake window went at once
+        control.stopped, control.closing = 0, False
         return given, done, control
 
     return open_on

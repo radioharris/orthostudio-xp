@@ -2222,6 +2222,47 @@ def test_stop_empties_the_queue_and_a_region_comes_out_of_it_alone(
     assert c.regions()["install"]["phase"] == "cancelled"
 
 
+@pytest.mark.parametrize("going", ["quit", "close"])
+def test_live_going_stops_its_installs_and_waits_for_them(
+    home: Path, tmp_path: Path, going: str
+) -> None:
+    """Live quit from the app's frame (``quit``), from its own window or gone with the app another
+    way (``close``): the install under way stops as the window's Stop stops it and the queue
+    empties, the call answering at once; the process's end waits for the install to be out
+    (``wait_idle``). Quit during an install let it go on unseen after the window, end halfway
+    with the process, and drop the regions queued behind it unsaid (2026-11-23)."""
+    c = queue_control(tmp_path / "X-Plane 12")
+    c.install_region("eur", whole=False)
+    c.install_region("sa", whole=False)
+    if going == "quit":
+        assert c.quit(force=True)
+    else:
+        c.close()
+    assert queued(c) == {"eur": None, "na": None, "sa": None, "afr": None}
+    assert c.wait_idle(5) and not c.installing() and not c.busy()
+    assert [made[0] for made in GatedInstaller.made] == ["eur"]
+    assert c.regions()["install"]["phase"] == "cancelled"
+
+
+def test_live_going_stops_the_night_grids_and_starts_none_after(home: Path, tmp_path: Path) -> None:
+    """The night grids' own download stops as Live goes, waited for with the installs, and a read
+    of the list ending after Quit starts none."""
+    import dataclasses
+
+    from orthostudio.live.osxpregions import Zip
+
+    c = queue_control(tmp_path / "X-Plane 12")
+    grids = Zip("eur/night-zips/night_eur.zip", 2, "e" * 64, 5)
+    c._catalog["eur"] = dataclasses.replace(c._catalog["eur"], night=(grids,))
+    put_region(c._catalog["eur"])
+    c._fetch_night_grids(c._catalog)
+    wait_for(lambda: c._installer is not None and c._installer.night_only)
+    c.close()
+    assert c.wait_idle(5) and c._install_thread is None
+    c._fetch_night_grids(c._catalog)  # the list's read, ending after Quit
+    assert c._install_thread is None
+
+
 def test_a_stop_as_a_turn_starts_starts_nothing(home: Path, tmp_path: Path) -> None:
     c = queue_control(tmp_path / "X-Plane 12")
     c.install_region("eur", whole=False)

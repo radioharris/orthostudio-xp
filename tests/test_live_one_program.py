@@ -40,6 +40,8 @@ class Control:
 
     def close(self) -> None:
         self.closing = True
+        if self.state != IDLE:
+            self.stop()
 
     def gone(self) -> bool:
         return self.leaving_for in ("build", "quit") or (self.closing and self.state == IDLE)
@@ -269,6 +271,6 @@ def test_live_set_up_beside_stops_with_the_app(program: Any) -> None:
     control = _live_here(STREAMING)
     ended: list[bool] = []
     web._here.end = lambda: ended.append(True)  # type: ignore[union-attr,method-assign]
-    web.end_here()
-    assert control.stopped == 1 and ended == [True] and web._here is None
+    web.end_here()  # closed: its stream and its installs stopped (control.close)
+    assert control.closing and control.stopped == 1 and ended == [True] and web._here is None
     web.end_here()  # nothing here any more: nothing done

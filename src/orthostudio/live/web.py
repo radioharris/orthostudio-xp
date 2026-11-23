@@ -262,10 +262,6 @@ class _Starting:
         if self.control is not None:
             self.control.close()
 
-    def stop(self) -> None:
-        if self.control is not None:
-            self.control.stop()
-
     def wait_idle(self) -> None:
         if self.control is not None:
             self.control.wait_idle()
@@ -453,7 +449,7 @@ def _in_the_browser(url: str, control: LiveControl, *, show: bool = True) -> Non
         while not control.gone():
             time.sleep(1)
     except KeyboardInterrupt:
-        control.stop()
+        control.close()  # the stream and the installs stopped, as the window's Quit stops them
     try:
         control.wait_idle()
     except KeyboardInterrupt:
@@ -539,7 +535,7 @@ def _in_a_window(
         menu=_menu(log),
         **_live_window(control),
     )
-    control.stop()  # the window went some other way: nothing may stream behind it
+    control.close()  # the window went some other way: nothing may stream nor install behind it
     control.wait_idle()
 
 
@@ -615,14 +611,14 @@ def live_window_here(log: Path | None = None) -> str:
 
 
 def end_here() -> None:
-    """Live set up beside OrthoStudio XP's window, once the app's last window is closed: nothing
-    may stream behind it, and its page is no longer served."""
+    """Live set up beside OrthoStudio XP's window or in the app's frame, once the app's last window
+    is closed: nothing may stream nor install behind it, and its page is no longer served."""
     with _here_lock:
         live = _here
     if live is None:
         return
     _be_here(None, unless_not=live)
-    live.stop()
+    live.close()  # the stream and the installs stopped, waited for: nothing goes on after the app
     live.wait_idle()
     live.end()
 

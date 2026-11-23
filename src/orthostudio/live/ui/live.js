@@ -2091,6 +2091,7 @@ async function quitLive() {
   const running = Boolean(status && status.state !== "idle");
   const lines = [t("quit.text")];
   if (running) lines.push(t("quit.streaming"));
+  if (status?.checks?.installing) lines.push(t("quit.installing")); // stopped too (control.close)
   if (running && status.checks?.xplane_running) lines.push(t("quit.xplane"));
   if (!(await confirmQuit(lines))) return;
   await act("close");
