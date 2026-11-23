@@ -374,6 +374,7 @@ class MissingPieceTest(unittest.TestCase):
         stuck = piece_keys(tex, 0)[0]
         name = f"{NAMES[0]}.dds"
         released = threading.Event()
+        logged: list[str] = []
         with (
             tempfile.TemporaryDirectory() as tmp,
             mock.patch.object(streamer_module, "STUCK_S", 0.5),
@@ -382,12 +383,17 @@ class MissingPieceTest(unittest.TestCase):
             s = self.streamer(
                 Path(tmp), lambda on: FakeDownloader(on, slow=[stuck], released=released)
             )
+            s.log = logged.append
             try:
                 jobs = s.plan(Fix(*tex.center), x_plane_there=False, starting=True)
                 self.assertLessEqual(jobs[name][0], 0)  # what X-Plane waits for
                 s.start()
                 self.assertTrue(self.wait(lambda: name in s.built))  # without the piece
                 self.assertIn(name, s.patchy)
+                # counted in the status line, never a line per texture (1,034 of the log's 1,152
+                # lines with the source gone, 2026-11-23)
+                self.assertIn("| built without some pieces: 1", s.status())
+                self.assertFalse([line for line in logged if name in line], logged)
                 # X-Plane goes on once all it waits for is built, the other texture too, which a
                 # slower computer was still encoding at that moment (a Windows PC, 2026-11-12)
                 self.assertTrue(self.wait(lambda: s.urgent_left() == 0))

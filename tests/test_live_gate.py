@@ -1967,7 +1967,7 @@ class NoTimeLimitTest(unittest.TestCase):
     for STALL_S, the streamer lets X-Plane go, and reloads the scenery once all is built."""
 
     def test_nothing_downloads_any_more(self):
-        answers, took, logged = self.fly(SilentDownloader)
+        answers, took, logged, reports = self.fly(SilentDownloader)
         self.assertTrue(answers[0].startswith("LIVE1 WAIT"), answers[:3])
         self.assertTrue(answers[-1].startswith("LIVE1 GO"), answers[-3:])
         self.assertNotEqual(answers[-1], "LIVE1 GO 0")  # textures were left to build
@@ -1975,11 +1975,16 @@ class NoTimeLimitTest(unittest.TestCase):
         stalled = [line for line in logged if "nothing downloaded for" in line]
         self.assertTrue(stalled, logged[-5:])
         self.assertIn("(is the internet there?)", stalled[0])
+        # Live's window: held while X-Plane waited, no more once it went on, its textures still
+        # to build (it said held 83 s after, 2026-11-23)
+        held = [r["start"]["held"] for r in reports if r["start"] is not None]
+        self.assertIn(True, held)
+        self.assertFalse(held[-1], held)
 
     def test_the_reason_nothing_downloads(self):
         """The internet there, but every request refused (on the user's Windows, 2026-10-04,
         curl could not open its certificates' file): the message says how they fail."""
-        answers, _took, logged = self.fly(RefusedDownloader)
+        answers, _took, logged, _reports = self.fly(RefusedDownloader)
         self.assertTrue(answers[-1].startswith("LIVE1 GO"), answers[-3:])
         stalled = [line for line in logged if "nothing downloaded for" in line]
         self.assertTrue(stalled, logged[-5:])
@@ -1988,7 +1993,7 @@ class NoTimeLimitTest(unittest.TestCase):
     def test_a_source_refusing_this_computer(self):
         """Its server answers every request 403, as Esri's edge did to a user's address
         (2026-10-07): the message names it, where it asked whether the internet was there."""
-        answers, _took, logged = self.fly(DeniedDownloader)
+        answers, _took, logged, _reports = self.fly(DeniedDownloader)
         self.assertTrue(answers[-1].startswith("LIVE1 GO"), answers[-3:])
         stalled = [line for line in logged if "nothing downloaded for" in line]
         self.assertTrue(stalled, logged[-5:])
@@ -2003,6 +2008,7 @@ class NoTimeLimitTest(unittest.TestCase):
             port = free_port()
             gate = Gate(root / "X-Plane 12", lambda icao: None, port=port)
             logged = []
+            reports = []  # what Live's window is told, every REPORT_EVERY_S
             s = Streamer(pack, cache, downloader, workers=1, log=logged.append)
             stop = threading.Event()
             lat, lon = parse_texture_name(f"{NAMES[0]}.dds").center
@@ -2019,6 +2025,7 @@ class NoTimeLimitTest(unittest.TestCase):
                         gate=gate,
                         should_stop=stop.is_set,
                         log=logged.append,
+                        report=reports.append,
                     ),
                 )
                 thread.start()
@@ -2037,11 +2044,15 @@ class NoTimeLimitTest(unittest.TestCase):
                             break
                         time.sleep(0.1)
                 took = time.time() - t0
+                seen = len(reports)  # and what the window is told after
+                end = time.time() + 5
+                while len(reports) < seen + 2 and time.time() < end:
+                    time.sleep(0.1)
                 stop.set()
                 thread.join(30)
             gate.close()
             cache.close()
-        return answers, took, logged
+        return answers, took, logged, reports
 
 
 class InFlightTest(unittest.TestCase):

@@ -131,8 +131,9 @@ PHOTO_FLOOR_RULE = "13-or-source"
 STALL_S = 60.0
 PAUSE_UNREAD_S = 10.0  # X-Plane paused for a new start in flight that Live cannot read: let go
 # A piece of a texture X-Plane waits for (urgency <= 0), awaited this long: the texture is built
-# without it, from the zoom below, as a piece that failed, and built again later with it. At a
-# start at LSGG, one piece Bing never sent held X-Plane 20 s, the downloader's four tries.
+# without it, from the zoom below where it is in, as a piece that failed, and built again later
+# with it. At a start at LSGG, one piece Bing never sent held X-Plane 20 s, the downloader's four
+# tries.
 STUCK_S = 10.0
 PATCH_RETRY_S = 60.0  # a texture built without such pieces is built again after this, doubled
 PATCH_RETRY_MAX_S = 1800.0  # each time they still do not come, up to this
@@ -1578,8 +1579,10 @@ class Streamer:
 
         def give_up_stuck(pool) -> None:
             """Pieces awaited more than STUCK_S by a texture X-Plane waits for: it is built without
-            them, from the zoom below. The downloader goes on, and what it brings is cached for
-            the texture's next build."""
+            them, from the zoom below where it is in, and built again later (``patchy``, which the
+            status line counts: a line per texture filled the log, 1,034 lines of 1,152 with the
+            source gone, 2026-11-23). The downloader goes on, and what it brings is cached for the
+            texture's next build."""
             now = time.monotonic()
             stuck = [k for k, t in asked_at.items() if now - t > STUCK_S]
             if not stuck:
@@ -1590,11 +1593,6 @@ class Streamer:
                 for name in [n for n in waiting.get(key, ()) if n in urgent]:
                     waiting[key].discard(name)
                     job = jobs.get(name)
-                    if job is not None and not job.patched:
-                        self.log(
-                            f"  a piece of {name} has not come for {STUCK_S:.0f} s: built from "
-                            f"the zoom below meanwhile, and again once it comes"
-                        )
                     if job is not None:
                         without(job, key, None, True, pool)
 
@@ -1909,6 +1907,7 @@ class Streamer:
             flying = len(self.in_flight)
             built = dict(self.built)
             done = dict(self.done)
+            patchy = len(self.patchy)
         dl = self.downloader
         return {
             "first_level": MIN_LEVEL,  # the lists below: levels -1 (8192 px) to 4 (256 px)
@@ -1922,6 +1921,7 @@ class Streamer:
             "downloaded_bytes": getattr(dl, "bytes", 0),
             "from_cache": self.from_cache,
             "failed": getattr(dl, "failed", 0),
+            "patchy": patchy,  # textures built without some pieces, built again later
             # the sources whose server refuses this computer (Downloader.refusing), the chosen one
             # while it answers nothing (unanswered), and whether downloads fail now (failing):
             # the window says so
@@ -1968,6 +1968,7 @@ class Streamer:
             f"pieces {s['downloaded']} downloaded ({s['downloaded_bytes'] / 1e6:.0f} MB), "
             f"{s['from_cache']} from cache"
             + (f", {s['failed']} failed" if s["failed"] else "")
+            + (f" | built without some pieces: {s['patchy']}" if s["patchy"] else "")
             + f" | disk {s['disk_bytes'] / 1e9:.1f}/{s['disk_budget'] / 1e9:.0f} GB"
             + (" | X-Plane read early" if s["read_early"] else "")
         )
@@ -2004,6 +2005,10 @@ class Arrival:
     held: bool = False  # the plugin held X-Plane for it
     released: bool = False  # ... and let it go with everything built
     stalled: bool = False  # ... or let it go because nothing downloaded any more
+    # X-Plane waits for it now: Live's last answer, to the plugin's HOLD or in its pause, said
+    # wait (Live's window and log said "held" 83 s after it went on with nothing downloading,
+    # 2026-11-23)
+    waiting: bool = False
     elsewhere_since: float | None = None  # X-Plane running somewhere else since then
     # the most textures and night textures seen left for it while wanted: the bar's whole
     most: int = 0
@@ -2232,7 +2237,7 @@ def progress_report(
     if arrival is not None:
         start = {
             "name": arrival.name,
-            "held": arrival.held and not arrival.released,  # X-Plane waits on its loading screen
+            "held": arrival.waiting,  # X-Plane waits on its loading screen
             **start_count(streamer, arrival, now),
             # ready once everything was (ready_at), the window's card gone for good
             "ready": arrival.ready_at is not None,
@@ -2468,6 +2473,7 @@ def run(
                         # start was chosen and where X-Plane says it loads it (shown["squares"],
                         # which the plugin counts down once every texture is built)
                         squares, ready = shown["squares"], shown["ready"]
+                        arrival.waiting = not (ready or stalled)
                         gate.answer(
                             addr,
                             ready or stalled,
@@ -2530,6 +2536,7 @@ def run(
                     done = shown["progress"]
                     stalled = shown["stalled"]
                     squares, ready = shown["squares"], shown["ready"]
+                    arrival.waiting = not (ready or stalled)
                     pause_window.show(
                         *lines(
                             place_in(arrival.name, lang),
@@ -2681,7 +2688,7 @@ def run(
                 if arrival is not None:
                     where += (
                         f" (start {arrival.name}"
-                        + (", X-Plane held" if arrival.held and not arrival.released else "")
+                        + (", X-Plane held" if arrival.waiting else "")
                         + ")"
                     )
                 elif streamer.last_fix is not None and streamer.last_fix.cam_lat is not None:
