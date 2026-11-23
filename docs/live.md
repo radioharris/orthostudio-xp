@@ -731,6 +731,9 @@ To switch Live off, put `enabled = false` in `live.toml`, in OrthoStudio XP's ow
   are built again as X-Plane needs them. Nothing to delete by hand.
 - If the photo source refuses your connection (access denied), Live says so under the source and
   the textures read "Downloads refused": stop Live, choose another source, start it again.
+- If the photo source does not answer, Live says so under the source and the textures read
+  "Downloads failing": if your internet connection works, stop Live, choose another source, start
+  it again.
 - Quit X-Plane before Stop: Live unchecks its scenery when it stops, and waits for X-Plane to quit
   first.
 - Quitting the app while Live streams asks first, in the window.
