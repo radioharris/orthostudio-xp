@@ -123,7 +123,7 @@ JUMP_KM = 20.0  # a position this far from the last one is a new start: a telepo
 PLAN_EVERY_S = 2.0
 REPORT_EVERY_S = 1.0  # what the Live window is told, this often
 # X-Plane held while Live told it to wait this recently: the plugin asks every 0.25 s while it
-# waits, and Live's pause is answered at each turn (Arrival.holding)
+# waits, and Live's pause is answered at each turn
 HELD_FRESH_S = 2.0
 WRITES_EVERY_S = 300.0  # what Live wrote, by kind, in the log this often (writes.py)
 # what the pack's record says its textures follow (texture.photo_floor): ZL13, ZL14 for the sources
@@ -2007,12 +2007,11 @@ class Arrival:
     how: str
     since: float
     ready_at: float | None = None  # when everything X-Plane will read there was built
-    held: bool = False  # the plugin held X-Plane for it
-    released: bool = False  # ... and let it go with everything built
-    stalled: bool = False  # ... or let it go because nothing downloaded any more
-    # when Live last told X-Plane to wait for it, at the plugin's HOLD or in its pause; 0 once
-    # told to go (holding)
-    told_wait: float = 0.0
+    held: bool = False  # the plugin held X-Plane for it, once at least (may_have_read_early)
+    released: bool = False  # the plugin or the pause let X-Plane go with everything built
+    stalled: bool = False  # ... or because nothing downloaded any more
+    told_wait: float = 0.0  # when Live last told X-Plane to wait for it, 0 once told to go
+
     elsewhere_since: float | None = None  # X-Plane running somewhere else since then
     # the most textures and night textures seen left for it while wanted: the bar's whole
     most: int = 0
@@ -2077,11 +2076,11 @@ class Arrival:
         return self.shown
 
     def holding(self, now: float) -> bool:
-        """X-Plane waits for it now: Live told it to wait less than HELD_FRESH_S ago, and not to
-        go since. Live's window and log said "held" 83 s after X-Plane went on with nothing
-        downloading (2026-11-23); an answer to an older ask, or X-Plane quitting while held, is
-        forgotten as the plugin stops asking."""
-        return now - self.told_wait < HELD_FRESH_S
+        """X-Plane waits for it now: Live told it to wait, at the plugin's HOLD or in its pause,
+        less than HELD_FRESH_S ago, and not to go since. Live's window and log said "held" 83 s
+        after X-Plane went on with nothing downloading (2026-11-23); a late answer to an ask sent
+        before the go, or X-Plane quitting while held, is forgotten as the plugin stops asking."""
+        return 0.0 <= now - self.told_wait < HELD_FRESH_S
 
     def near(self, lat: float, lon: float) -> bool:
         return haversine_m(self.lat, self.lon, lat, lon) <= JUMP_KM * 1000.0
@@ -2485,7 +2484,7 @@ def run(
                         # which the plugin counts down once every texture is built)
                         squares, ready = shown["squares"], shown["ready"]
                         go = ready or stalled
-                        arrival.told_wait = 0.0 if go else now
+                        arrival.told_wait = 0.0 if go else time.time()  # after its plans
                         gate.answer(
                             addr,
                             go,
@@ -2499,40 +2498,39 @@ def run(
                             night=shown["night"],
                             squares=squares,
                         )
-                        if stalled and not arrival.stalled:
-                            arrival.stalled = True
-                            log(
-                                f"  nothing downloaded for {streamer.stalled_s():.0f} s: X-Plane "
-                                f"goes on with {left} textures to build around {arrival.name} "
-                                f"({why_nothing_comes(streamer.downloader)})"
-                            )
-                        elif ready and not arrival.released:
-                            arrival.released = True
-                            log(
-                                f"  X-Plane goes on after {took:.0f} s: everything it reads "
-                                f"around {arrival.name} is built"
-                            )
-                        elif go or now - last_wait < 5:
-                            pass  # X-Plane goes on, or what it waits for was said just now
-                        elif left:
+                        if go:
+                            if stalled and not arrival.stalled:
+                                arrival.stalled = True
+                                log(
+                                    f"  nothing downloaded for {streamer.stalled_s():.0f} s: "
+                                    f"X-Plane goes on with {left} textures to build around "
+                                    f"{arrival.name} ({why_nothing_comes(streamer.downloader)})"
+                                )
+                            elif ready and not arrival.released:
+                                arrival.released = True
+                                log(
+                                    f"  X-Plane goes on after {took:.0f} s: everything it reads "
+                                    f"around {arrival.name} is built"
+                                )
+                        elif now - last_wait >= 5:
                             last_wait = now
-                            log(
-                                f"  X-Plane waits on its loading screen: {left} textures to build "
-                                f"around {arrival.name}, {left - building} of them waiting for "
-                                f"their photos ({done:.0%}, {took:.0f} s, {mbs:.1f} MB/s)"
-                            )
-                        elif night_left:
-                            last_wait = now
-                            log(
-                                f"  X-Plane waits on its loading screen: {night_left} night "
-                                f"textures to make around {arrival.name} ({took:.0f} s)"
-                            )
-                        else:
-                            last_wait = now
-                            log(
-                                f"  X-Plane waits on its loading screen: the files of {squares} "
-                                f"squares around {arrival.name} are being made"
-                            )
+                            if left:
+                                log(
+                                    f"  X-Plane waits on its loading screen: {left} textures to "
+                                    f"build around {arrival.name}, {left - building} of them "
+                                    f"waiting for their photos ({done:.0%}, {took:.0f} s, "
+                                    f"{mbs:.1f} MB/s)"
+                                )
+                            elif night_left:
+                                log(
+                                    f"  X-Plane waits on its loading screen: {night_left} night "
+                                    f"textures to make around {arrival.name} ({took:.0f} s)"
+                                )
+                            else:
+                                log(
+                                    f"  X-Plane waits on its loading screen: the files of "
+                                    f"{squares} squares around {arrival.name} are being made"
+                                )
             if pauser is not None and pauser.paused_for is not None:
                 # X-Plane paused at a new location chosen in flight: its start is the click read in
                 # Freeflight.prf just above (gate.new_start), held as the plugin's HOLD is: until
@@ -2551,7 +2549,7 @@ def run(
                     stalled = shown["stalled"]
                     squares, ready = shown["squares"], shown["ready"]
                     go = ready or stalled
-                    arrival.told_wait = 0.0 if go else now
+                    arrival.told_wait = 0.0 if go else time.time()  # after its plans
                     pause_window.show(
                         *lines(
                             place_in(arrival.name, lang),

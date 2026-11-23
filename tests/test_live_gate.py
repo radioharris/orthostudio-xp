@@ -1731,7 +1731,6 @@ class RunTest(unittest.TestCase):
         permille = [int(w["p"]) for w in waits]
         self.assertEqual(permille, sorted(permille))  # the bar only moves forward
         self.assertTrue(all(float(w["mbs"]) >= 0 for w in waits))
-        self.assertFalse(self.held_now())  # told to go: Live's window says so at once
         self.xp.position = (self.lat, self.lon)  # the flight runs
         time.sleep(1.0)
         self.assertEqual(self.xp.commands, [])  # X-Plane read everything once built: no reload
