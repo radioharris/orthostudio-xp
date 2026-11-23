@@ -187,23 +187,23 @@ def test_a_quiet_time_then_a_moment_the_line_stops_is_not_said(
 ) -> None:
     """An answer, a quiet time longer than DEAD_S (over the sea, X-Plane loading, the Mac
     asleep), then a few requests failing: counted from when they began, not from the answer
-    before the quiet time; said only once they fail for DEAD_S (the review of 2026-11-23)."""
-    _on_good_sessions(monkeypatch, DEAD_S=2.0, REFUSED_IN_A_ROW=4)
-    lines: list[str] = []
+    before the quiet time; said only once they fail for DEAD_S (the review of 2026-11-23). DEAD_S
+    1 s: a failed try waits 0.5 s before its piece counts as failed."""
+    _on_good_sessions(monkeypatch, DEAD_S=1.0, REFUSED_IN_A_ROW=4)
     on_piece, wait = _answers()
-    d = Sessions(_source(), on_piece, max_in_flight=8, attempts=1, fallback=None, log=lines.append)
+    d = Sessions(_source(), on_piece, max_in_flight=8, attempts=1, fallback=None)
     try:
         d.submit((16, 0, 7), 0.0)
         wait(1)  # an answer
-        time.sleep(2.5)  # a quiet time
+        time.sleep(1.2)  # a quiet time
         monkeypatch.setattr(LiveSession, "up", False)  # the line drops a moment
         t0 = time.monotonic()
         for x in range(1, 5):
             d.submit((16, x, 7), float(x))
         wait(4)
-        assert not _until(lambda: d.unanswered() is not None, timeout=0.3)
+        assert not _until(lambda: d.unanswered() is not None, timeout=0.2)
         x = 5
-        while time.monotonic() - t0 < 2.6:  # failing on: said DEAD_S after they began
+        while time.monotonic() - t0 < 1.3:  # failing on: said DEAD_S after they began
             d.submit((16, x, 7), float(x))
             wait(1)
             x += 1
@@ -212,24 +212,30 @@ def test_a_quiet_time_then_a_moment_the_line_stops_is_not_said(
         d.close()
 
 
-def test_a_moment_the_line_stops_is_not_said(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Many requests failing in a row, then an answer within DEAD_S: nothing said."""
-    _on_good_sessions(monkeypatch, DEAD_S=2.0)
+def test_silent_through_a_quiet_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Silent, a quiet time longer than DEAD_S (X-Plane loading, the textures built again later),
+    then requests failing still: silent all along, never « answers again » without an answer (the
+    review of 2026-11-23)."""
+    _on_good_sessions(monkeypatch, DEAD_S=1.0, REFUSED_IN_A_ROW=4)
     monkeypatch.setattr(LiveSession, "up", False)
     lines: list[str] = []
     on_piece, wait = _answers()
-    d = Sessions(_source(), on_piece, max_in_flight=64, attempts=1, fallback=None, log=lines.append)
+    d = Sessions(_source(), on_piece, max_in_flight=8, attempts=1, fallback=None, log=lines.append)
     try:
-        n = downloader_module.REFUSED_IN_A_ROW + 8
-        for x in range(n):
-            d.submit((16, x, 7), float(x))
-        wait(n)
-        monkeypatch.setattr(LiveSession, "up", True)
-        d.submit((16, 100, 7), 0.0)
-        assert wait(1)[0][1] == IMAGE
+        x, t0 = 0, time.monotonic()
+        while time.monotonic() - t0 < 1.3:
+            for i in range(8):
+                d.submit((16, x + i, 7), float(x + i))
+            wait(8)
+            x += 8
+        assert _until(lambda: d.unanswered() is not None, timeout=1.0)
+        time.sleep(1.5)  # a quiet time, the source still answering nothing
+        for i in range(8):
+            d.submit((16, 999 + i, 7), 0.0)
+        wait(8)
         time.sleep(0.3)
-        assert d.unanswered() is None
-        assert not [line for line in lines if "does not answer" in line]
+        assert d.unanswered() == "Source" and d.failing()
+        assert not [line for line in lines if "answers again" in line]
     finally:
         d.close()
 

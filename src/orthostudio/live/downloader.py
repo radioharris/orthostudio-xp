@@ -14,7 +14,8 @@ transport errors and other 5xx are retried after 0.5, 1, 2 s; "no imagery here" 
 placeholder answer, 204 or 404) is reported as such, and so is a piece that failed every attempt.
 A source whose server answers nothing but 403 refuses this computer (:meth:`Downloader.refusing`),
 which the Live window and the log say; so is a chosen source that answers nothing at all
-(:meth:`Downloader.unanswered`), and downloads failing now (:meth:`Downloader.failing`).
+(:meth:`Downloader.unanswered`). The window says too when downloads fail now
+(:meth:`Downloader.failing`).
 
 A piece not there after HEDGE_S is asked of another of the provider's servers as well, and the first
 good answer wins. Otherwise the last pieces of a start can hold X-Plane for half a minute: once, two
@@ -278,7 +279,8 @@ class Downloader:
         chosen = p is self.p
         if chosen:
             now = time.monotonic()
-            if now - self._asked > DEAD_S:  # asked again after a quiet time: counted from now
+            # asked again after a quiet time: counted from now; once silent, only an answer ends it
+            if now - self._asked > DEAD_S and not self._silent_now:
                 self._heard = now
             self._asked = now
         try:
