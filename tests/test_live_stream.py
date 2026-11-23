@@ -390,8 +390,7 @@ class MissingPieceTest(unittest.TestCase):
                 s.start()
                 self.assertTrue(self.wait(lambda: name in s.built))  # without the piece
                 self.assertIn(name, s.patchy)
-                # counted in the status line, never a line per texture (1,034 of the log's 1,152
-                # lines with the source gone, 2026-11-23)
+                # counted in the status line, never a line per texture
                 self.assertIn("| built without some pieces: 1", s.status())
                 self.assertFalse([line for line in logged if name in line], logged)
                 # X-Plane goes on once all it waits for is built, the other texture too, which a

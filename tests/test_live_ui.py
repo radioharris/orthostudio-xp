@@ -29,7 +29,7 @@ from orthostudio.live.settings import (
     SettingsFileError,
     load_settings,
 )
-from orthostudio.live.streamer import Arrival, Streamer, progress_report
+from orthostudio.live.streamer import HELD_FRESH_S, Arrival, Streamer, progress_report
 from orthostudio.live.web import UI_DIR, create_live_app
 from test_api_fakes import client_for
 
@@ -545,9 +545,8 @@ def test_the_status_line_and_the_window_read_the_same_figures(tmp_path: Path) ->
         assert snap["disk_bytes"] == texture_bytes(0)
         assert "queue empty (urgent 0)" in s.status()
         assert "built 4096 px: 1 |" in s.status()
-        arrival = Arrival(
-            45.5, 6.5, "LFLL runway 17R", "click", time.time() - 12, held=True, waiting=True
-        )
+        arrival = Arrival(45.5, 6.5, "LFLL runway 17R", "click", time.time() - 12)
+        arrival.told_wait = time.time()  # Live told X-Plane to wait, just now
         values = {"lat": 45.7, "lon": 5.1, "alt_m": 250.0, "gs_ms": 0.0, "trk_deg": 275.5}
         now = time.time()
         report = progress_report(s, values, arrival, now, last_packet=now - 60, mbs=15.5)
@@ -558,6 +557,8 @@ def test_the_status_line_and_the_window_read_the_same_figures(tmp_path: Path) ->
         json.dumps(report)  # what the page gets
         assert report["data"] == "stale"  # X-Plane stopped sending: it loads the flight
         assert report["start"]["held"] and report["start"]["name"] == "LFLL runway 17R"
+        later = now + HELD_FRESH_S  # no more asks: X-Plane went, or quit
+        assert not progress_report(s, values, arrival, later, now - 60, 15.5)["start"]["held"]
         assert report["start"]["seconds"] == pytest.approx(12, abs=1)
         assert report["aircraft"]["alt_ft"] == pytest.approx(820, abs=1)
         assert report["streamer"] == s.snapshot()

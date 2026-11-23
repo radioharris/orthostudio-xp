@@ -1616,6 +1616,7 @@ class RunTest(unittest.TestCase):
         self.gate = Gate(self.xplane, lambda icao: None, port=self.port)
         self.xp = ScriptedXPlane()
         self.log = []
+        self.reports = []  # what Live's window is told
         self.built_when_said = {}  # message -> how many textures were built when it was logged
         self.pauser = FakePauser()
         self.lat, self.lon = parse_texture_name(f"{NAMES[0]}.dds").center
@@ -1659,6 +1660,7 @@ class RunTest(unittest.TestCase):
                 should_stop=self.stop.is_set,
                 log=log,
                 pauser=self.pauser,
+                report=self.reports.append,
                 **more,
             ),
         )
@@ -1703,6 +1705,12 @@ class RunTest(unittest.TestCase):
             time.sleep(0.05)
         return False
 
+    def held_now(self):
+        """Whether Live's window says X-Plane held, in the first report after this call."""
+        seen = len(self.reports)
+        self.assertTrue(self.wait_for(lambda: len(self.reports) > seen, timeout=5.0))
+        return self.reports[seen]["start"]["held"]
+
     def test_held_until_built_then_no_reload(self):
         self.click()
         self.assertTrue(self.wait_for(lambda: any("starting a flight" in m for m in self.log)))
@@ -1723,6 +1731,7 @@ class RunTest(unittest.TestCase):
         permille = [int(w["p"]) for w in waits]
         self.assertEqual(permille, sorted(permille))  # the bar only moves forward
         self.assertTrue(all(float(w["mbs"]) >= 0 for w in waits))
+        self.assertFalse(self.held_now())  # told to go: Live's window says so at once
         self.xp.position = (self.lat, self.lon)  # the flight runs
         time.sleep(1.0)
         self.assertEqual(self.xp.commands, [])  # X-Plane read everything once built: no reload
@@ -1875,6 +1884,7 @@ class RunTest(unittest.TestCase):
         self.pauser.paused_since = time.time()  # ... and Live pauses it at once
         self.pauser.paused_for = last_start(self.prefs)
         self.assertTrue(self.wait_for(lambda: self.pauser.resumed))
+        self.assertFalse(self.held_now())  # resumed: no more held in Live's window
         self.assertEqual(self.streamer.built, {f"{n}.dds": 0 for n in NAMES})
         said = [m for m in self.log if m.startswith("  X-Plane goes on after ")]
         self.assertTrue(said and said[0].endswith("is built"), self.log)
@@ -1976,7 +1986,7 @@ class NoTimeLimitTest(unittest.TestCase):
         self.assertTrue(stalled, logged[-5:])
         self.assertIn("(is the internet there?)", stalled[0])
         # Live's window: held while X-Plane waited, no more once it went on, its textures still
-        # to build (it said held 83 s after, 2026-11-23)
+        # to build
         held = [r["start"]["held"] for r in reports if r["start"] is not None]
         self.assertIn(True, held)
         self.assertFalse(held[-1], held)
@@ -2046,7 +2056,7 @@ class NoTimeLimitTest(unittest.TestCase):
                 took = time.time() - t0
                 seen = len(reports)  # and what the window is told after
                 end = time.time() + 5
-                while len(reports) < seen + 2 and time.time() < end:
+                while len(reports) < seen + 1 and time.time() < end:
                     time.sleep(0.1)
                 stop.set()
                 thread.join(30)

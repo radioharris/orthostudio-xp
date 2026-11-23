@@ -122,6 +122,9 @@ PLAN_ASK_EVERY_S = 60.0  # SimBrief is asked for the pilot's last plan at most t
 JUMP_KM = 20.0  # a position this far from the last one is a new start: a teleport, a new flight
 PLAN_EVERY_S = 2.0
 REPORT_EVERY_S = 1.0  # what the Live window is told, this often
+# X-Plane held while Live told it to wait this recently: the plugin asks every 0.25 s while it
+# waits, and Live's pause is answered at each turn (Arrival.holding)
+HELD_FRESH_S = 2.0
 WRITES_EVERY_S = 300.0  # what Live wrote, by kind, in the log this often (writes.py)
 # what the pack's record says its textures follow (texture.photo_floor): ZL13, ZL14 for the sources
 # whose ZL13 is other imagery; a record of before has their far textures built again
@@ -581,6 +584,7 @@ class Streamer:
         self.read_early = False
         self.last_fix: Fix | None = None
         self.done = Counter()
+        self.patched_built = 0  # of them, built without some pieces: built again later
         self.errors = 0
         self.crashed: BaseException | None = None
         self.last_progress = time.monotonic()  # a piece arrived, or none was awaited
@@ -1341,6 +1345,7 @@ class Streamer:
                 self.done[level] += 1
                 self.copied_up.discard(name)  # its file written again: no copy there any more
                 if patched:  # built again later, a little later each time
+                    self.patched_built += 1
                     tries = self.patchy.get(name, (0.0, 0))[1]
                     wait = min(PATCH_RETRY_MAX_S, PATCH_RETRY_S * 2**tries)
                     self.patchy[name] = (time.time() + wait, tries + 1)
@@ -1579,10 +1584,10 @@ class Streamer:
 
         def give_up_stuck(pool) -> None:
             """Pieces awaited more than STUCK_S by a texture X-Plane waits for: it is built without
-            them, from the zoom below where it is in, and built again later (``patchy``, which the
-            status line counts: a line per texture filled the log, 1,034 lines of 1,152 with the
-            source gone, 2026-11-23). The downloader goes on, and what it brings is cached for the
-            texture's next build."""
+            them, from the zoom below where it is in, and built again later (``patchy``). The
+            status line counts such builds: a line per texture filled the log, 1,034 lines of 1,152
+            with the source gone (2026-11-23). The downloader goes on, and what it brings is cached
+            for the texture's next build."""
             now = time.monotonic()
             stuck = [k for k, t in asked_at.items() if now - t > STUCK_S]
             if not stuck:
@@ -1907,7 +1912,7 @@ class Streamer:
             flying = len(self.in_flight)
             built = dict(self.built)
             done = dict(self.done)
-            patchy = len(self.patchy)
+            patched = self.patched_built
         dl = self.downloader
         return {
             "first_level": MIN_LEVEL,  # the lists below: levels -1 (8192 px) to 4 (256 px)
@@ -1921,7 +1926,7 @@ class Streamer:
             "downloaded_bytes": getattr(dl, "bytes", 0),
             "from_cache": self.from_cache,
             "failed": getattr(dl, "failed", 0),
-            "patchy": patchy,  # textures built without some pieces, built again later
+            "patched": patched,  # of the built, those without some pieces: built again later
             # the sources whose server refuses this computer (Downloader.refusing), the chosen one
             # while it answers nothing (unanswered), and whether downloads fail now (failing):
             # the window says so
@@ -1968,7 +1973,7 @@ class Streamer:
             f"pieces {s['downloaded']} downloaded ({s['downloaded_bytes'] / 1e6:.0f} MB), "
             f"{s['from_cache']} from cache"
             + (f", {s['failed']} failed" if s["failed"] else "")
-            + (f" | built without some pieces: {s['patchy']}" if s["patchy"] else "")
+            + (f" | built without some pieces: {s['patched']}" if s["patched"] else "")
             + f" | disk {s['disk_bytes'] / 1e9:.1f}/{s['disk_budget'] / 1e9:.0f} GB"
             + (" | X-Plane read early" if s["read_early"] else "")
         )
@@ -2005,10 +2010,9 @@ class Arrival:
     held: bool = False  # the plugin held X-Plane for it
     released: bool = False  # ... and let it go with everything built
     stalled: bool = False  # ... or let it go because nothing downloaded any more
-    # X-Plane waits for it now: Live's last answer, to the plugin's HOLD or in its pause, said
-    # wait (Live's window and log said "held" 83 s after it went on with nothing downloading,
-    # 2026-11-23)
-    waiting: bool = False
+    # when Live last told X-Plane to wait for it, at the plugin's HOLD or in its pause; 0 once
+    # told to go (holding)
+    told_wait: float = 0.0
     elsewhere_since: float | None = None  # X-Plane running somewhere else since then
     # the most textures and night textures seen left for it while wanted: the bar's whole
     most: int = 0
@@ -2071,6 +2075,13 @@ class Arrival:
             "stalled": nothing_comes and not night_left,
         }
         return self.shown
+
+    def holding(self, now: float) -> bool:
+        """X-Plane waits for it now: Live told it to wait less than HELD_FRESH_S ago, and not to
+        go since. Live's window and log said "held" 83 s after X-Plane went on with nothing
+        downloading (2026-11-23); an answer to an older ask, or X-Plane quitting while held, is
+        forgotten as the plugin stops asking."""
+        return now - self.told_wait < HELD_FRESH_S
 
     def near(self, lat: float, lon: float) -> bool:
         return haversine_m(self.lat, self.lon, lat, lon) <= JUMP_KM * 1000.0
@@ -2237,7 +2248,7 @@ def progress_report(
     if arrival is not None:
         start = {
             "name": arrival.name,
-            "held": arrival.waiting,  # X-Plane waits on its loading screen
+            "held": arrival.holding(now),  # X-Plane waits on its loading screen
             **start_count(streamer, arrival, now),
             # ready once everything was (ready_at), the window's card gone for good
             "ready": arrival.ready_at is not None,
@@ -2473,10 +2484,11 @@ def run(
                         # start was chosen and where X-Plane says it loads it (shown["squares"],
                         # which the plugin counts down once every texture is built)
                         squares, ready = shown["squares"], shown["ready"]
-                        arrival.waiting = not (ready or stalled)
+                        go = ready or stalled
+                        arrival.told_wait = 0.0 if go else now
                         gate.answer(
                             addr,
-                            ready or stalled,
+                            go,
                             shown["left"],
                             arrival.name,
                             shown["progress"],
@@ -2500,20 +2512,22 @@ def run(
                                 f"  X-Plane goes on after {took:.0f} s: everything it reads "
                                 f"around {arrival.name} is built"
                             )
-                        elif left and now - last_wait >= 5:
+                        elif go or now - last_wait < 5:
+                            pass  # X-Plane goes on, or what it waits for was said just now
+                        elif left:
                             last_wait = now
                             log(
                                 f"  X-Plane waits on its loading screen: {left} textures to build "
                                 f"around {arrival.name}, {left - building} of them waiting for "
                                 f"their photos ({done:.0%}, {took:.0f} s, {mbs:.1f} MB/s)"
                             )
-                        elif night_left and now - last_wait >= 5:
+                        elif night_left:
                             last_wait = now
                             log(
                                 f"  X-Plane waits on its loading screen: {night_left} night "
                                 f"textures to make around {arrival.name} ({took:.0f} s)"
                             )
-                        elif not ready and not stalled and now - last_wait >= 5:
+                        else:
                             last_wait = now
                             log(
                                 f"  X-Plane waits on its loading screen: the files of {squares} "
@@ -2529,14 +2543,15 @@ def run(
                 if pause_window is None:
                     pause_window = PauseWindow(xplane["pid"] or xplane_pid())
                 if arrival is not None and arrival.how == "click" and key and key in arrival.name:
-                    arrival.held = arrival.loading = True
+                    arrival.loading = True
                     shown = start_count(streamer, arrival, now, fresh=True)
                     night_left = shown["night"]
                     left, building = shown["left"] - night_left, shown["building"] - night_left
                     done = shown["progress"]
                     stalled = shown["stalled"]
                     squares, ready = shown["squares"], shown["ready"]
-                    arrival.waiting = not (ready or stalled)
+                    go = ready or stalled
+                    arrival.told_wait = 0.0 if go else now
                     pause_window.show(
                         *lines(
                             place_in(arrival.name, lang),
@@ -2550,7 +2565,7 @@ def run(
                         ),
                         shown["progress"],
                     )
-                    if ready or stalled:
+                    if go:
                         pauser.resume()
                         pause_window.hide()
                         if stalled:
@@ -2688,7 +2703,7 @@ def run(
                 if arrival is not None:
                     where += (
                         f" (start {arrival.name}"
-                        + (", X-Plane held" if arrival.waiting else "")
+                        + (", X-Plane held" if arrival.holding(now) else "")
                         + ")"
                     )
                 elif streamer.last_fix is not None and streamer.last_fix.cam_lat is not None:
