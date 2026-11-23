@@ -522,12 +522,11 @@ class NightWork:
         self,
         at: tuple[float, float] | None,
         when: tuple[float, float] | None,
-        textures: Callable[[], dict[str, int]],
+        built: Callable[[], dict[str, int]],
     ) -> None:
         """Where the aircraft is, or the start, and X-Plane's day of the year and UTC hours there
-        (``when``, None when not known): when night comes, every texture of ``textures()`` is
-        wanted (the streamer's ``textures_now``: built, queued or being built; the nearest
-        first). The caller gives the time that is right: in flight X-Plane's own; at a
+        (``when``, None when not known): when night comes, every texture built is wanted (the
+        nearest first). The caller gives the time that is right: in flight X-Plane's own; at a
         start the one the plugin read in X-Plane as it loads it (orthostudio.live.gate), never
         the one X-Plane sends meanwhile, the flight before's (it took a start at night chosen in
         flight for day)."""
@@ -536,10 +535,10 @@ class NightWork:
         if when is None or self._at is None:
             return
         solar = (when[1] + self._at[1] / 15.0) % 24.0  # UTC to the aircraft's solar time
-        self._set_night(night_at(when[0], solar, self._at[0]), textures, "in X-Plane")
+        self._set_night(night_at(when[0], solar, self._at[0]), built, "in X-Plane")
 
     def start(
-        self, lat: float, lon: float, textures: Callable[[], dict[str, int]] | None = None
+        self, lat: float, lon: float, built: Callable[[], dict[str, int]] | None = None
     ) -> None:
         """A start planned there: night there by the time X-Plane saved for it, its night textures
         then made before X-Plane goes on, those of X-Plane's squares round it (:meth:`start_left`).
@@ -552,7 +551,7 @@ class NightWork:
         self.waiting = True
         saved = _solar_at_start(self.prefs) if self.prefs is not None else None
         if saved is not None:
-            self._set_night(night_at(*saved, unsure_h=START_UNSURE_H), textures, "at the start")
+            self._set_night(night_at(*saved, unsure_h=START_UNSURE_H), built, "at the start")
 
     def arrived(self) -> None:
         """The start is over (X-Plane flies there, or went elsewhere: the streamer's ``arrived``):
@@ -599,6 +598,7 @@ class NightWork:
         with self.lock:
             self.made.pop(name, None)
             self.wanted.pop(name, None)
+            self.tries.pop(name, None)  # asked again, its failures forgotten
             if name in self.running:
                 self.changed.add(name)
         self._black(name)
@@ -776,16 +776,14 @@ class NightWork:
 
     # --- helpers ------------------------------------------------------------------------------
 
-    def _set_night(
-        self, night: bool, textures: Callable[[], dict[str, int]] | None, why: str
-    ) -> None:
+    def _set_night(self, night: bool, built: Callable[[], dict[str, int]] | None, why: str) -> None:
         night = night and self.lights
         was, self.night = self.night, night
-        if night and not was and textures is not None:
-            levels = textures()
-            for name, level in levels.items():
+        if night and not was and built is not None:
+            textures = built()
+            for name, level in textures.items():
                 self.want(name, level)
-            self.log(f"  night {why}: its towns lit first, {len(levels)} textures")
+            self.log(f"  night {why}: its towns lit first, {len(textures)} textures built")
 
     def _in_window(self, name: str) -> bool:
         """Whether ``name`` lies in X-Plane's squares round the start (every name, no start)."""

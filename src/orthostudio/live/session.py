@@ -793,7 +793,7 @@ def follow(
 
 
 def _night_work(prepared: Prepared, log: Log, light: str = "normal", lights: bool = True):
-    """The night textures of the textures built (orthostudio.live.nightwork): X-Plane's roads from
+    """The night textures of Live's textures (orthostudio.live.nightwork): X-Plane's roads from
     its Global Scenery, else from the overlays of Live's regions, NASA's grids from each
     region's night folder, else Live's; their lights as bright as ``light`` says; none made
     without ``lights``, those there counted and followed."""

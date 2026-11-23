@@ -32,7 +32,7 @@ north and 60.9 back south.
   texture sharp again before X-Plane wants it so, as any texture ahead.
 - A 256 px texture goes back to the neutral clone only beyond 300 km (EVICT_SAFE_KM): within that
   distance the planner keeps every texture at its 256 px level (X-Plane loads tiles up to 230 km
-  out). So does a night texture whose texture is not built: made black there.
+  out).
 
 Nothing is lost that X-Plane could miss: the probe flight saw it open a texture again 1,276 times
 for a sharper level and never for a coarser one.
@@ -244,9 +244,9 @@ def pick(
 ) -> list[tuple[str, int]]:
     """[(texture, new level)] bringing ``built`` to 90 % of ``budget``, or as close as it can:
     sharp textures ``coarsen`` allows back to 256 px, then 256 px ones ``neutral`` allows (the same
-    when not given) back to the neutral clone, with the night textures of ``lit`` whose texture is
-    not built (made black, NEUTRAL_LEVEL); those ``behind`` the aircraft first, then the least
-    recently seen. ``top_of``, ``lit``, ``copied``, ``water``: what each file holds, as
+    when not given) back to the neutral clone, and the night textures ``lit`` counts on their own
+    (a stale texture's: made black, NEUTRAL_LEVEL); those ``behind`` the aircraft first, then the
+    least recently seen. ``top_of``, ``lit``, ``copied``, ``water``: what each file holds, as
     :func:`usage` takes them; a texture made coarser has its night black, its copy gone and its
     water photo made from its new level (orthostudio.live.waterphoto.follow)."""
     lit, copied, water = lit or {}, frozenset(copied), water or {}
@@ -269,7 +269,7 @@ def pick(
         if total <= target:
             return out
     small = [n for n, lv in built.items() if lv == 4]
-    small += [n for n in lit if n not in built]  # a night whose texture is not built
+    small += [n for n in lit if n not in built]  # a night texture counted on its own
     for name in sorted((n for n in small if neutral(n)), key=first):
         if name in built:
             total -= held_bytes(name, 4, top_of(name), lit, copied, water)

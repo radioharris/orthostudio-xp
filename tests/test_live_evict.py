@@ -437,9 +437,9 @@ class StreamerTest(unittest.TestCase):
         self.assertEqual(s.built, {name: 4})
         self.assertEqual(told, [("black", name)])
 
-    def test_a_night_alone_made_black_its_day_file_left(self):
-        """A night whose texture is not built, picked by the disk budget: made black, its day file
-        (the neutral name) and the textures built untouched."""
+    def test_a_night_counted_on_its_own_made_black_only(self):
+        """A night texture counted on its own, picked by the disk budget: made black, its
+        texture's file and the textures built untouched."""
         from unittest import mock
 
         from orthostudio.live import streamer as streamer_module

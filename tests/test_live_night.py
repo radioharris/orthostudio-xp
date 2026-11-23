@@ -814,6 +814,11 @@ class NightWorkTest(unittest.TestCase):
         self.assertEqual(len(failed), 2)
         self.assertIn("the disk is full", failed[0])
         self.assertIn("left for this flight", failed[1])
+        self.work.want(self.near, 0)  # left: not asked again...
+        self.assertEqual(self.work.wanted, {})
+        self.work.back_to_black(self.near)  # ...until its texture is made again
+        self.work.want(self.near, 0)
+        self.assertEqual(self.work.wanted, {self.near: 0})
 
     def test_a_night_counted_from_its_job_until_it_is_black(self):
         """Never short: a Live stopped while it was made, Windows refusing to put one back black
@@ -933,8 +938,7 @@ def nightwork_team_max():
 
 class PlanNightTest(unittest.TestCase):
     """The streamer's plan wants the night texture of each texture it plans, at the level X-Plane
-    will read of it, at night only; nightfall wants those built and those the plan queued; a start
-    waits for those its plan wants round it."""
+    will read of it, at night only; a start waits for those its plan wants round it."""
 
     def setUp(self):
         import tempfile
@@ -975,7 +979,6 @@ class PlanNightTest(unittest.TestCase):
         self.night.night = True
         jobs = self.s.plan(self.fix(), x_plane_there=False)
         self.assertEqual(sorted(jobs), sorted(self.names))
-        self.assertEqual(self.s.built, {})  # none built
         self.assertEqual(self.night.wanted, self.levels(jobs))
 
     def test_by_day_none_is_wanted(self):
@@ -999,18 +1002,10 @@ class PlanNightTest(unittest.TestCase):
         self.assertEqual(self.night.wanted, self.levels(near))
         self.assertTrue(all(self.levels(near)[n] < self.levels(far)[n] for n in self.names))
 
-    def test_nightfall_wants_those_built_and_those_queued(self):
-        self.s.built = {"built_far_away.dds": 2}
-        jobs = self.s.plan(self.fix(), x_plane_there=False)  # by day: queued
-        lat, lon = self.fix().lat, self.fix().lon
-        self.night.tick((lat, lon), (314, 20.0), self.s.textures_now)  # 20:00 UTC: night
-        self.assertTrue(self.night.night)
-        self.assertEqual(self.night.wanted, {**self.levels(jobs), "built_far_away.dds": 2})
-
     def test_a_start_waits_for_the_nights_its_plan_wants_round_it(self):
         lat, lon = self.fix().lat, self.fix().lon
-        self.night.start(lat, lon, self.s.textures_now)
-        self.night.tick((lat, lon), (314, 20.0), self.s.textures_now)
+        self.night.start(lat, lon, self.s.built_copy)
+        self.night.tick((lat, lon), (314, 20.0), self.s.built_copy)
         jobs = self.s.plan(self.fix(), x_plane_there=False, starting=True)
         self.assertEqual(self.night.start_left(day_left=len(jobs)), len(self.names))
         self.assertEqual(self.night.start_left(day_left=0), len(self.names))
@@ -1170,14 +1165,44 @@ class StartBarTest(unittest.TestCase):
             night=night,
             urgent_left=lambda: day.left,
             urgent_building=lambda: 0,
-            textures_now=lambda: {},
+            built_copy=lambda: {},
             squares_left=lambda *points: 0,
+            stalled_s=lambda: 0.0,
         )
         a = Arrival(43.63, 1.37, "LFBO", "plugin", 0.0)
         self.assertEqual(start_count(s, a, 0.0, fresh=True)["progress"], 0.0)
         day.left, night.left = 0, 250
         shown = start_count(s, a, 1.0, fresh=True)
         self.assertEqual((shown["left"], shown["night"], shown["progress"]), (250, 250, 0.75))
+
+    def test_a_start_stalled_counts_its_night_textures_from_then(self):
+        """No piece for STALL_S: the start's night textures counted from then, NIGHT_WAIT_S
+        running (start_left(0)), and stalled once none is left (the review of 2026-11-23)."""
+        from types import SimpleNamespace
+
+        from orthostudio.live.streamer import STALL_S, Arrival, start_count
+
+        asked: list[int] = []
+        night = SimpleNamespace(left=600, start_night=True)
+        night.tick = lambda at, when, built: None
+        night.start_left = lambda day_left: (asked.append(day_left), night.left)[1]
+        quiet = [0.0]
+        s = SimpleNamespace(
+            night=night,
+            urgent_left=lambda: 400,
+            urgent_building=lambda: 0,
+            built_copy=lambda: {},
+            squares_left=lambda *points: 0,
+            stalled_s=lambda: quiet[0],
+        )
+        a = Arrival(46.24, 6.11, "LSGG", "plugin", 0.0)
+        self.assertFalse(start_count(s, a, 0.0, fresh=True)["stalled"])
+        self.assertEqual(asked[-1], 400)
+        quiet[0] = STALL_S + 1
+        self.assertFalse(start_count(s, a, 1.0, fresh=True)["stalled"])  # night textures left
+        self.assertEqual(asked[-1], 0)
+        night.left = 0  # made, or NIGHT_WAIT_S passed
+        self.assertTrue(start_count(s, a, 2.0, fresh=True)["stalled"])
 
 
 class NightWordsTest(unittest.TestCase):
@@ -1435,8 +1460,9 @@ class NightDiskTest(unittest.TestCase):
             night=night,
             urgent_left=lambda: 0,
             urgent_building=lambda: 0,
-            textures_now=lambda: {},
+            built_copy=lambda: {},
             squares_left=lambda *points: 0,
+            stalled_s=lambda: 0.0,
         )
         a = Arrival(46.24, 6.11, "LSGG", "plugin", 0.0, held_time=(171, 15.5))
         self.assertEqual(start_count(s, a, 100.0)["left"], 8700)  # its photos built: not ready
@@ -1499,20 +1525,20 @@ class NightDiskTest(unittest.TestCase):
                        lit={"lit": 0}, copied=["copied"])  # fmt: skip
         self.assertEqual(coarser, [("copied", 4)])
 
-    def test_a_night_alone_counted_and_made_black_as_a_256_px_texture_goes_neutral(self):
-        """A night whose texture is not built: counted, and over the disk budget made black where
-        a 256 px texture goes back to the neutral clone (beyond 300 km, not queued nor being
+    def test_a_night_counted_on_its_own_made_black_as_a_256_px_texture_goes_neutral(self):
+        """A night texture counted on its own (a stale texture's): over the disk budget made black
+        where a 256 px texture goes back to the neutral clone (beyond 300 km, not queued nor being
         built), those behind first."""
         from orthostudio.live.evict import night_bytes, pick, texture_bytes, usage
         from orthostudio.live.region import NEUTRAL_LEVEL
 
         built = {"day.dds": 4}
-        lit = {"alone.dds": 0, "behind.dds": 1, "day.dds": 4}
+        lit = {"stale.dds": 0, "behind.dds": 1, "day.dds": 4}
         total = usage(built, None, lit)
         self.assertEqual(total, texture_bytes(4) + night_bytes(0) + night_bytes(1) + night_bytes(4))
         anywhere = pick(built, {}, lambda n: False, total // 2, neutral=lambda n: n != "day.dds",
                         behind=lambda n: n == "behind.dds", lit=lit)  # fmt: skip
-        self.assertEqual(anywhere, [("behind.dds", NEUTRAL_LEVEL), ("alone.dds", NEUTRAL_LEVEL)])
+        self.assertEqual(anywhere, [("behind.dds", NEUTRAL_LEVEL), ("stale.dds", NEUTRAL_LEVEL)])
         in_reach = pick(built, {}, lambda n: False, total // 2, neutral=lambda n: False, lit=lit)
         self.assertEqual(in_reach, [])
 
@@ -1583,6 +1609,7 @@ class NightDiskTest(unittest.TestCase):
                 "progress": 0.4,
                 "squares": 3,
                 "ready": False,
+                "stalled": False,
             },
         )
         self.assertIs(a.shown, shown)
