@@ -69,7 +69,7 @@ def lines(
     if left == 0:
         said = ground.format(squares, "s" if squares > 1 else "") if squares > 0 else preparing
         return headline, f"{said}  -  {seconds:.0f} s"
-    if 0 < left <= night:  # the photos built: the night textures left (a start at night)
+    if 0 < left <= night:  # the night textures alone left (streamer.Arrival.count)
         return headline, f"{nights.format(left)}  -  {seconds:.0f} s"
     said = photos if left > 0 and building >= left else rate.format(mbs)
     if lang == "fr":
