@@ -126,7 +126,9 @@ WRITES_EVERY_S = 300.0  # what Live wrote, by kind, in the log this often (write
 # what the pack's record says its textures follow (texture.photo_floor): ZL13, ZL14 for the sources
 # whose ZL13 is other imagery; a record of before has their far textures built again
 PHOTO_FLOOR_RULE = "13-or-source"
-STALL_S = 60.0  # pieces awaited this long and none arriving: no internet, X-Plane is let go
+# pieces awaited this long and none arriving: no internet, X-Plane is let go, after its night
+# textures, NIGHT_WAIT_S at most (start_count)
+STALL_S = 60.0
 PAUSE_UNREAD_S = 10.0  # X-Plane paused for a new start in flight that Live cannot read: let go
 # A piece of a texture X-Plane waits for (urgency <= 0), awaited this long: the texture is built
 # without it, from the zoom below, as a piece that failed, and built again later with it. At a
@@ -1774,7 +1776,7 @@ class Streamer:
             water=self._water_now(),
         )
         for name, level in picks[:EVICT_BATCH]:
-            if name not in self.built:  # a night texture on its own (evict.pick): black only
+            if name not in self.built:
                 self._night_black(name)
                 self.evicted += 1
                 continue
@@ -2049,17 +2051,18 @@ class Arrival:
     ) -> dict:
         """What a start waits for: its textures and its night ones, those all of whose photos are
         in, its progress, and the squares round it whose files are not made yet; ready when no
-        texture and no square is left. ``nothing_comes``: no piece for STALL_S
-        (:func:`start_count`); then ``stalled``, X-Plane let go, once no night texture is left
-        (NIGHT_WAIT_S at most)."""
+        texture and no square is left. No piece for STALL_S (``nothing_comes``,
+        :func:`start_count`): the night textures counted alone, NIGHT_WAIT_S at most, then
+        ``stalled``. The plugin, the pause window and Live's window say what is left from
+        ``left``, ``building`` and ``night``, each by its own rule."""
+        nights_only = nothing_comes and night_left > 0
         self.shown = {
-            "left": left + night_left,
-            "building": building + night_left,
+            "left": night_left if nights_only else left + night_left,
+            "building": night_left if nights_only else building + night_left,
             "night": night_left,
             "progress": done,
             "squares": squares,
             "ready": left + night_left == 0 and squares == 0,
-            "nothing_comes": nothing_comes,
             "stalled": nothing_comes and not night_left,
         }
         return self.shown
@@ -2491,7 +2494,7 @@ def run(
                                 f"  X-Plane goes on after {took:.0f} s: everything it reads "
                                 f"around {arrival.name} is built"
                             )
-                        elif left and not shown["nothing_comes"] and now - last_wait >= 5:
+                        elif left and now - last_wait >= 5:
                             last_wait = now
                             log(
                                 f"  X-Plane waits on its loading screen: {left} textures to build "
@@ -2556,13 +2559,14 @@ def run(
                                 f"  X-Plane goes on after {took:.0f} s: everything it reads "
                                 f"around {arrival.name} is built"
                             )
-                    elif now - last_wait >= 5 and shown["left"] == 0:
+                    elif now - last_wait >= 5 and left:
                         last_wait = now
                         log(
-                            f"  X-Plane waits, paused: the files of {squares} squares around "
-                            f"{arrival.name} are being made"
+                            f"  X-Plane waits, paused: {left} textures to build around "
+                            f"{arrival.name}, {left - building} of them waiting for their photos "
+                            f"({done:.0%}, {took:.0f} s, {mbs:.1f} MB/s)"
                         )
-                    elif now - last_wait >= 5 and shown["nothing_comes"]:
+                    elif now - last_wait >= 5 and night_left:
                         last_wait = now
                         log(
                             f"  X-Plane waits, paused: {night_left} night textures to make around "
@@ -2571,9 +2575,8 @@ def run(
                     elif now - last_wait >= 5:
                         last_wait = now
                         log(
-                            f"  X-Plane waits, paused: {left} textures to build around "
-                            f"{arrival.name}, {left - building} of them waiting for their photos "
-                            f"({done:.0%}, {took:.0f} s, {mbs:.1f} MB/s)"
+                            f"  X-Plane waits, paused: the files of {squares} squares around "
+                            f"{arrival.name} are being made"
                         )
                 elif took > PAUSE_UNREAD_S:  # the click never read: never X-Plane kept for nothing
                     pauser.resume()

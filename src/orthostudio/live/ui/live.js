@@ -223,10 +223,10 @@ export function holdText(start, mbs) {
   // once every photo the start waits for is in, that instead of a rate of 0.0, which read as
   // stuck while the count went down (the user's Shadow, 2026-10-11)
   const photosIn = start.left > 0 && (start.building || 0) >= start.left;
-  // the night textures alone left, or no piece coming any more (streamer.Arrival.count)
-  const nightsOnly = (start.night || 0) > 0 && (start.night >= start.left || start.nothing_comes);
+  // the night textures alone left (streamer.Arrival.count)
+  const nightsOnly = (start.night || 0) > 0 && start.night >= start.left;
   return t(nightsOnly ? "hold.night" : photosIn ? "hold.photos_in" : "hold.text", {
-    left: number(nightsOnly ? start.night : start.left),
+    left: number(start.left),
     seconds,
     mbs: number(mbs, 1),
   });

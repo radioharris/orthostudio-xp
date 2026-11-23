@@ -1193,8 +1193,11 @@ class StartBarTest(unittest.TestCase):
         self.assertFalse(start_count(s, a, 0.0, fresh=True)["stalled"])
         self.assertEqual(asked[-1], 400)
         quiet[0] = STALL_S + 1
-        self.assertFalse(start_count(s, a, 1.0, fresh=True)["stalled"])  # night textures left
+        shown = start_count(s, a, 1.0, fresh=True)
         self.assertEqual(asked[-1], 0)
+        # the night textures left, as every screen says them (left, building, night)
+        self.assertEqual((shown["left"], shown["building"], shown["night"]), (600, 600, 600))
+        self.assertFalse(shown["stalled"] or shown["ready"])
         night.left = 0  # made, or NIGHT_WAIT_S passed
         self.assertTrue(start_count(s, a, 2.0, fresh=True)["stalled"])
 
@@ -1227,8 +1230,8 @@ class StartBarTest(unittest.TestCase):
         a = Arrival(46.24, 6.11, "LSGG", "plugin", 0.0, held_time=(330, 21.0))
         shown = start_count(s, a, 0.0, fresh=True)
         self.assertEqual(planned, [(46.24, 6.11, False, True)])
-        self.assertEqual((shown["night"], shown["nothing_comes"]), (7, True))
-        self.assertFalse(shown["stalled"])
+        self.assertEqual((shown["left"], shown["building"], shown["night"]), (7, 7, 7))
+        self.assertFalse(shown["stalled"] or shown["ready"])
         start_count(s, a, 1.0, fresh=True)
         self.assertEqual(len(planned), 1)  # once, as the night begins
 
@@ -1554,9 +1557,9 @@ class NightDiskTest(unittest.TestCase):
         self.assertEqual(coarser, [("copied", 4)])
 
     def test_a_night_counted_on_its_own_made_black_as_a_256_px_texture_goes_neutral(self):
-        """A night texture counted on its own (a stale texture's): over the disk budget made black
-        where a 256 px texture goes back to the neutral clone (beyond 300 km, not queued nor being
-        built), those behind first."""
+        """A night texture counted on its own: over the disk budget made black where a 256 px
+        texture goes back to the neutral clone (beyond 300 km, not queued nor being built), those
+        behind first."""
         from orthostudio.live.evict import night_bytes, pick, texture_bytes, usage
         from orthostudio.live.region import NEUTRAL_LEVEL
 
@@ -1637,7 +1640,6 @@ class NightDiskTest(unittest.TestCase):
                 "progress": 0.4,
                 "squares": 3,
                 "ready": False,
-                "nothing_comes": False,
                 "stalled": False,
             },
         )

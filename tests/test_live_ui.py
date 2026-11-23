@@ -960,8 +960,6 @@ def test_the_start_s_line_says_the_squares_once_every_texture_is_built() -> None
         {"left": 3, "building": 0, "squares": 36, "seconds": 2},  # textures left: they first
         {"left": 7, "building": 7, "night": 7, "squares": 0, "seconds": 17},
         {"left": 0, "seconds": 3},  # a count of before: no squares
-        # no piece for a minute: the night textures it still waits for
-        {"left": 407, "building": 7, "night": 7, "nothing_comes": True, "seconds": 70},
     ]
     script = (
         f"import {{ holdText }} from {json.dumps((UI_DIR / 'live.js').as_uri())};"
@@ -984,7 +982,6 @@ def test_the_start_s_line_says_the_squares_once_every_texture_is_built() -> None
         "3 textures à construire · 5,2 Mo/s · 2 s",
         "7 textures de nuit à construire · 17 s",
         "0 textures à construire · 5,2 Mo/s · 3 s",
-        "7 textures de nuit à construire · 70 s",
     ]
     assert said["en"][:2] == [
         "Preparing the ground: 36 squares · 12 s",

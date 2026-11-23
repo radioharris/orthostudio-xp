@@ -269,7 +269,7 @@ def pick(
         if total <= target:
             return out
     small = [n for n, lv in built.items() if lv == 4]
-    small += [n for n in lit if n not in built]  # a night texture counted on its own
+    small += [n for n in lit if n not in built]
     for name in sorted((n for n in small if neutral(n)), key=first):
         if name in built:
             total -= held_bytes(name, 4, top_of(name), lit, copied, water)
