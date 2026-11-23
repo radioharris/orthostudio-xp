@@ -709,8 +709,8 @@ class NightWorkTest(unittest.TestCase):
         self.assertEqual([p.size for p in self.pools], [1])
 
     def test_a_start_waits_for_x_plane_s_squares_round_it_only(self):
-        """Not for the whole pack: 11,142 night textures at a Paris start, Nice's and the Alps'
-        among them (2026-11-11). Those its plan wants there, as they come."""
+        """A start waits for the night textures of X-Plane's squares round it, not for the whole
+        pack's."""
         at_night(self.prefs)
         self.work.start(43.70, 7.25, lambda: {self.near: 0, self.paris: 4})
         self.assertEqual(self.work.start_left(day_left=3), 1)
@@ -937,8 +937,8 @@ def nightwork_team_max():
 
 
 class PlanNightTest(unittest.TestCase):
-    """The streamer's plan wants the night texture of each texture it plans, at the level X-Plane
-    will read of it, at night only; a start waits for those its plan wants round it."""
+    """The night textures :meth:`Streamer.plan` wants, at night only; a start waits for those
+    round it."""
 
     def setUp(self):
         import tempfile
@@ -972,7 +972,7 @@ class PlanNightTest(unittest.TestCase):
         return Fix(lat + dlat, lon)
 
     def levels(self, jobs):
-        """The night levels of the textures planned, counted from the top of their file."""
+        """The night levels of the textures in ``jobs``, as :meth:`NightWork.want` keeps them."""
         return {n: max(0, lv - max(0, self.s.top_of(n))) for n, (_, lv) in jobs.items()}
 
     def test_by_day_none_is_wanted(self):
@@ -1170,8 +1170,7 @@ class StartBarTest(unittest.TestCase):
         self.assertEqual((shown["left"], shown["night"], shown["progress"]), (250, 250, 0.75))
 
     def test_a_start_stalled_after_its_night_textures(self):
-        """No piece for STALL_S: NIGHT_WAIT_S at most, then stalled (the review of
-        2026-11-23)."""
+        """No piece for STALL_S: NIGHT_WAIT_S at most, then stalled."""
         from types import SimpleNamespace
 
         from orthostudio.live.streamer import STALL_S, Arrival, start_count
@@ -1203,8 +1202,7 @@ class StartBarTest(unittest.TestCase):
 
     def test_a_night_beginning_at_the_hold_plans_the_start_again(self):
         """Night found as X-Plane loads the start (the time the plugin read): the start planned
-        again at once, its night textures counted in the same count, never stalled before (the
-        review of 2026-11-23)."""
+        again at once, its night textures counted in the same count, never stalled before."""
         from types import SimpleNamespace
 
         from orthostudio.live.streamer import STALL_S, Arrival, start_count
@@ -1534,7 +1532,7 @@ class NightDiskTest(unittest.TestCase):
         s._night_black = lambda name: Streamer._night_black(s, name)
         Streamer._refit(s, "a.dds", 1)
         self.assertEqual((s.built, s.copied_up), ({"a.dds": 1}, set()))  # written again: no copy
-        self.assertEqual(said, [("black", "a.dds")])  # wanted again by the next plan
+        self.assertEqual(said, [("black", "a.dds")])  # its night black
         Streamer._refit(s, "neutral.dds", 1)  # not built: nothing of its own
         self.assertEqual(len(said), 1)
 

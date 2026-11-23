@@ -81,8 +81,7 @@ def overlay_folders(
     first (``regions/y_osxp_overlays``, X-Plane's roads, forests and buildings of every square of
     OrthoStudio XP's mesh), then AutoOrtho's where a pilot has
     them: Live's install of a region keeps them beside its mesh (``regions/y_ao_<id>``), in
-    whichever Live folder (its marker: a cold test flight's Live streams onto the region of the
-    user's, tools/live/flights/fly.py); AutoOrtho's installer puts every region's in one pack,
+    whichever Live folder (its marker); AutoOrtho's installer puts every region's in one pack,
     ``yAutoOrtho_Overlays``, used here whether it is enabled or not; last, those of the folders of
     other tools' meshes chosen in the Settings, in their order, as Live's start found them
     (``others``, :attr:`orthostudio.live.scenery.OtherMeshes.overlays`), as their meshes."""

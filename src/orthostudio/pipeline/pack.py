@@ -432,11 +432,8 @@ def write_pack(
 
     Nothing of the pack is touched before every source is found, and nothing is removed before
     every file is in place: a source folder missing, or an image its textures folder lists
-    missing from it, stops the pack as it is (``MESH_INPUT_MISSING``, ``TEX_MISSING``). A
-    textures folder gone was taken for one with no images, and every image of the tile was
-    removed as no longer wanted: a build that had found the folder in the store before Free
-    space deleted it, in another process, emptied the tile and said it was done (a review,
-    2026-10-23). The DSF goes in last, once its textures and terrain files are there.
+    missing from it, stops the pack as it is (``MESH_INPUT_MISSING``, ``TEX_MISSING``). The DSF
+    goes in last, once its textures and terrain files are there.
     """
     out_root = Path(out_root)
     pack_dir = out_root / pack_dir_name(tile)

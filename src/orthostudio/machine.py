@@ -54,15 +54,14 @@ def pool_size(n: int) -> int:
 def cpu_workers(count: int | None = None) -> int:
     """The processes the processor's work takes: every processor but two, at least one, no more
     than a pool may have here; of ``count`` processors, else of this computer's
-    (:func:`processors`). A computer of 64 threads asked Windows for 62 and every build stopped."""
+    (:func:`processors`)."""
     return pool_size(max(1, (processors() if count is None else count) - 2))
 
 
 def subprocess_slots() -> int:
     """How many relief, mesh and overlay nodes of a build run at once, and how many tracings
-    beside them: the processors less one, 3 at most. A quarter of them gave a 4-core Windows
-    virtual machine one, and a batch's stages ran one after the other; the RAM budget still holds
-    back what memory cannot."""
+    beside them: the processors less one, 3 at most; the RAM budget still holds back what memory
+    cannot."""
     return min(3, max(1, processors() - 1))
 
 

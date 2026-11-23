@@ -1,12 +1,11 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""Squares of other tools' meshes put in front of Live on its map (discussion 33): a pilot's own
-mesh of the Alps, its elevation fixed by hand, flown with Live's photos on the squares he chose,
-Live's own mesh everywhere else. One setting, a list of squares; their DSF wins in the pack, the
-rest in today's order; the pack set up again when the list or one of their DSFs changes, never
-under a running X-Plane. Several folders, in an order: the first that has a square gives it, in
-front of Live or behind; each folder added, moved, removed or put in front at once by its own
-button."""
+"""Squares of other tools' meshes put in front of Live on its map: their mesh with Live's photos
+on those squares, Live's own mesh everywhere else. One setting, a list of squares; their DSF wins
+in the pack, the rest in today's order; the pack set up again when the list or one of their DSFs
+changes, never under a running X-Plane. Several folders, in an order: the first that has a square
+gives it, in front of Live or behind; each folder added, moved, removed or put in front at once by
+its own button."""
 
 from __future__ import annotations
 
@@ -71,7 +70,7 @@ def quiet(_: str) -> None:
 
 
 def live_and_alps(root: Path) -> tuple[Path, Path]:
-    """Live's region and the pilot's mesh, both with a DSF on Courchevel's square, told apart."""
+    """Live's region and another tool's mesh, both with a DSF on the same square, told apart."""
     live = make_source(root / "live", tile=BESIDE, textures=NAMES)
     alps = make_source(root / "alps", tile=BESIDE, textures=NAMES)
     (alps / DSF).write_bytes(b"XPLNEDSF the Alps' own elevation")
@@ -177,9 +176,8 @@ def test_a_start_refused_says_a_disk_only_for_a_mesh_gone(tmp_path: Path, monkey
 
 
 def test_a_dsf_in_front_edited_again_is_taken(tmp_path: Path) -> None:
-    """The pilot's DSF of a square in front saved again, its relief fixed once more: the next
-    check sets the pack up again, which then holds the new one; its region's folders' times alone
-    did not change."""
+    """The other mesh's DSF of a square in front saved again: the next check sets the pack up
+    again, which then holds the new one; its region's folders' times alone did not change."""
     live, alps = live_and_alps(tmp_path)
     pack = tmp_path / "pack"
     front = {COURCHEVEL: alps}
@@ -387,10 +385,8 @@ def test_each_folder_once(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_a_disk_that_numbers_no_file_compares_real_paths(tmp_path: Path, monkeypatch) -> None:
-    """Some network shares number no file (``st_ino`` 0): every folder there was the same one, the
-    second refused as listed already, every pack of a folder matched with every line of X-Plane's
-    list. There their real paths are compared, as the system compares names: a link is still the
-    folder it leads to."""
+    """On a disk that numbers no file (``st_ino`` 0), folders are compared by their real paths, as
+    the system compares names: two folders stay two, a link is still the folder it leads to."""
     monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
     alps, pyrenees, link = tmp_path / "Alps", tmp_path / "Pyrenees", tmp_path / "Alps link"
     alps.mkdir()
@@ -511,8 +507,8 @@ def test_the_page_s_saves_wait_for_each_other(tmp_path: Path, monkeypatch) -> No
 @pytest.mark.anyio
 async def test_no_disk_is_asked_under_the_settings_lock(tmp_path: Path, monkeypatch) -> None:
     """A folder added is compared with those listed on the disk, and Live's folder of a Save
-    checked on it, before the settings' lock, which every save waits for: a slow disk held them
-    all. Under the lock a folder added meanwhile is told apart as written."""
+    checked on it, before the settings' lock, which every save waits for. Under the lock a folder
+    added meanwhile is told apart as written."""
     monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
     asked: list[bool] = []
     identity, problem = settings_module.folder_identity, api_module.folder_problem
@@ -578,8 +574,7 @@ async def test_the_language_with_live_toml_broken_leaves_it_as_it_is(
     tmp_path: Path, monkeypatch
 ) -> None:
     """The window's language, English or French, with live.toml not parsing: answered, the file
-    left as it is; once the file parses, a new language is saved. Once, an English pilot got a
-    200 and a French one a 500 (the language compared with the defaults)."""
+    left as it is; once the file parses, a new language is saved."""
     monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
     settings_file().parent.mkdir(parents=True)
     settings_file().write_text("[stream\n")
@@ -597,8 +592,7 @@ async def test_the_language_with_live_toml_unreadable_leaves_it_as_it_is(
     tmp_path: Path, monkeypatch
 ) -> None:
     """The window's language, English or French, with live.toml not readable: answered, the file
-    left as it is. Once, its OSError answered 500, with a traceback in LogLive at each load of the
-    page."""
+    left as it is."""
     monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
     settings_file().parent.mkdir(parents=True)
     text = '[stream]\nlanguage = "en"\ndisk_gb = 40\n'
@@ -613,8 +607,7 @@ async def test_the_language_with_live_toml_unreadable_leaves_it_as_it_is(
 
 def test_two_quick_language_switches_end_on_the_last(tmp_path: Path, monkeypatch) -> None:
     """EN to FR then back to EN at once: the second compared with the settings as the first saved
-    them, under the settings' lock, not as read before it; once compared with the file before
-    the first was written, it saved nothing and the window stayed in French at the next start."""
+    them, under the settings' lock, not as read before it."""
     monkeypatch.setenv("OSXP_HOME", str(tmp_path))
     save_settings(LiveSettings(language="en", disk_gb=60))
     lock = WatchedLock()
@@ -648,8 +641,7 @@ async def test_a_save_of_the_settings_keeps_the_folders_and_the_squares(
     tmp_path: Path, monkeypatch
 ) -> None:
     """The page's Save sends neither list: the folders and the squares in front stay as saved,
-    whatever a folder holds now (one that read empty, a disk's empty mount point, once wiped the
-    squares)."""
+    whatever a folder holds now, an empty one included."""
     monkeypatch.setenv("OSXP_HOME", str(tmp_path / "home"))
     _, alps = live_and_alps(tmp_path)
     empty = tmp_path / "mount"
@@ -897,8 +889,8 @@ def test_the_box_of_each_folder_in_both_languages() -> None:
     gives and those of them in front of Live, nothing when it gives none; under its path, only
     what the pilot acts on: its squares all behind Live's mesh, or all given by a folder above it,
     said plainly, not as a warning; a folder not there, or giving no mesh, a warning; the packs
-    left aside he may have meant (a tile with its photos), the others (a region Live has already)
-    only in the name's hover, with the meshes and roads it gives."""
+    left aside the pilot may have meant (a tile with its photos), the others (a region Live has
+    already) only in the name's hover, with the meshes and roads it gives."""
     there = {"next_start": False, "overlays": [], "refused": [], "in_xplane": [], "front": []}
     already = [{"name": "z_ao_pyr", "why": "already"}]
     photos = [{"name": "zOrtho4XP_+45+006", "why": "photos"}, *already]

@@ -349,9 +349,8 @@ def test_a_start_says_the_folder_unplugged(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_a_start_says_the_folder(tmp_path: Path, monkeypatch) -> None:
-    """Its disk unplugged while another region is installed, the start went on without a word
-    (the second review of 2026-11-14): it says what it takes in each folder, or that one is not
-    there, and goes on with the next folder."""
+    """Its disk unplugged while another region is installed: the start says what it takes in each
+    folder, or that one is not there, and goes on with the next folder."""
     folder = tmp_path / "Other mesh"
     make_source(folder, tile=(46, 2))
     gone = tmp_path / "unplugged"

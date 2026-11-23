@@ -1,8 +1,8 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """How many processes Build and Live start (``orthostudio.machine.cpu_workers``): every processor
-but two, at least one, and no more than a pool may have here, Python's own limit on Windows (61):
-a computer of 64 threads asked Windows for 62 and every build stopped."""
+but two, at least one, and no more than a pool may have here, Python's own limit on Windows
+(61)."""
 
 from __future__ import annotations
 

@@ -2446,8 +2446,7 @@ export function createPlanMap(ctx) {
   }
 
   /** The legend's head, the chevron at its end: the level alone on the line, the whole sentence
-   * on hover (the same user found it long, 2026-09-26); past the source's ceiling it still says
-   * the view is enlarged. */
+   * on hover; past the source's ceiling it still says the view is enlarged. */
   function legendView() {
     const [zoomNow, , ceilingNow] = viewNow();
     const short = Number.isInteger(ceilingNow) && zoomNow > ceilingNow ? t("map.view_over_short", { zl: zoomNow }) : t("map.view_zl", { zl: zoomNow });

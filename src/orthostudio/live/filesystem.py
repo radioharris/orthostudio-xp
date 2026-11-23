@@ -363,7 +363,7 @@ def remove_folder_link(path: Path) -> None:
 def folder_identity(folder: str | Path) -> tuple | None:
     """A folder as the disk knows it, its links followed, whatever its name's spelling or case,
     to compare: its disk and its number there (``st_dev``, ``st_ino``), or, where the disk gives
-    none (``st_ino`` 0, some network shares), its real path as the system compares names
+    none (``st_ino`` 0), its real path as the system compares names
     (``normcase(realpath)``); None for one not there. The one test of the same folder on the disk
     (the folders of other tools' meshes added twice, ``settings._same_folder``; their packs in
     X-Plane's list, ``covered.listed_above_live``)."""

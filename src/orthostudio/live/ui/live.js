@@ -598,9 +598,9 @@ function leftAside(refused) {
  *  Under its path (note), only what the pilot acts on: why Live takes none of its meshes (not
  *  there, no mesh Live can use, folders higher in the list giving all its squares, or the squares
  *  it gives all behind Live's mesh, the normal case of a mesh put in front of Live square by
- *  square), and the packs left aside he may have meant. In its name's hover (title), its name,
- *  the meshes and roads it gives, and every pack left aside. A warning only for a folder Live
- *  cannot use. {count, note, warn, title} */
+ *  square), and the packs left aside the pilot may have meant. In its name's hover (title), its
+ *  name, the meshes and roads it gives, and every pack left aside. A warning only for a folder
+ *  Live cannot use. {count, note, warn, title} */
 export function otherMeshSaid(f) {
   const front = number(f.front.length);
   let count = "";
@@ -624,11 +624,11 @@ export function otherMeshSaid(f) {
 
 /** What the title of other meshes says beside it, folded or open, and what needs the pilot there,
  *  a word each, which opens the list by itself (foldOpen): a folder not there or giving no mesh, a
- *  pack left aside he may have meant (each folder's own notes, otherMeshSaid). A button refused is
- *  none: said under the field, the list open since it holds them. Every word known at each status
- *  (foldSection's `known`, by default). Its badge: how many folders, and how many of their squares
- *  are in front of Live, in the warning's colour where a folder cannot be used; none without a
- *  folder. {badges: [{text, kind}], needs} */
+ *  pack left aside the pilot may have meant (each folder's own notes, otherMeshSaid). A button
+ *  refused is none: said under the field, the list open since it holds them. Every word known at
+ *  each status (foldSection's `known`, by default). Its badge: how many folders, and how many of
+ *  their squares are in front of Live, in the warning's colour where a folder cannot be used; none
+ *  without a folder. {badges: [{text, kind}], needs} */
 export function othersSummary(other) {
   const folders = other?.folders || [];
   const needs = [];
@@ -827,7 +827,7 @@ function loadShared() {
 }
 
 /** The choice kept for a list that folds, {open, seen}: open or folded by the pilot, and what
- * needed him as he chose; null when he never chose, or for words of no such choice. */
+ * needed the pilot then; null when never chosen, or for words of no such choice. */
 export function foldKept(text) {
   try {
     const kept = JSON.parse(text);
@@ -839,14 +839,14 @@ export function foldKept(text) {
 }
 
 /** Whether a list that folds is open: folded by default, open by itself while something needs the
- * pilot (`needs`, a word each: an update ready, a folder not there); once he opened or folded it,
- * as he left it (`kept`, foldKept), unless something needs him that did not as he chose. */
+ * pilot (`needs`, a word each: an update ready, a folder not there); once opened or folded, as
+ * left (`kept`, foldKept), unless something needs the pilot that did not then. */
 export function foldOpen(kept, needs) {
   if (!kept) return needs.length > 0;
   return kept.open || needs.some((need) => !kept.seen.includes(need));
 }
 
-/** The choice kept, what needed him then cut to what still needs him (`needs`, every word known):
+/** The choice kept, what needed the pilot then cut to what still does (`needs`, every word known):
  * a need gone then back (next month's update of the same region, a second failed install) opens
  * the list again. The same choice when nothing went. */
 export function foldSeen(kept, needs) {
@@ -864,7 +864,7 @@ const showFolds = () => Object.values(folds).forEach((fold) => fold.show());
  * line or on its chevron, a real button, opens or folds it and keeps that with what needs the pilot
  * then (foldOpen); a double click or a drag on the title is left to its text, which can be
  * selected. Opened for the visit alone, not kept: pointed at (`open`, showQuestion), or while a
- * search is typed (`searched`, drawSearch), until his click or the search emptied. `words()`: the
+ * search is typed (`searched`, drawSearch), until a click or the search emptied. `words()`: the
  * chevron's hover, {show, hide}, in the page's language. `draw` at each status: its badges and what
  * needs the pilot now, every word known unless `known` is false (foldSeen).
  */
@@ -1109,8 +1109,7 @@ export function regionRow(id, mine, r, install, running, idle, xplane, folder, a
   // the line: the install of this region while it runs, its place in the queue with the button
   // that takes it out, why its install ended short (stopped by its Stop; failed, the region's own
   // word, r.failed), or its update waiting whole. None once it is done, the row saying
-  // « Installed » (a line « used from the next start » was read as « restart the app »,
-  // 2026-11-18), nor while it waits: the disk says that
+  // « Installed », nor while it waits: the disk says that
   const line = busy && running ? { install: true }
     : queued ? { text: queued === 1 ? t("regions.queued_next") : t("regions.queued", { n: number(queued) }),
       button: { act: "unqueue", label: t("regions.unqueue") } }

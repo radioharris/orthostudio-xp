@@ -185,10 +185,9 @@ def test_a_source_that_answers_nothing_is_said_until_it_answers(
 def test_a_quiet_time_then_a_moment_the_line_stops_is_not_said(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An answer, a quiet time longer than DEAD_S (over the sea, X-Plane loading, the Mac
-    asleep), then a few requests failing: counted from when they began, not from the answer
-    before the quiet time; said only once they fail for DEAD_S (the review of 2026-11-23). DEAD_S
-    1 s: a failed try waits 0.5 s before its piece counts as failed."""
+    """An answer, a quiet time longer than DEAD_S, then a few requests failing: counted from when
+    they began, not from the answer before the quiet time; said only once they fail for DEAD_S.
+    DEAD_S 1 s: a failed try waits 0.5 s before its piece counts as failed."""
     _on_good_sessions(monkeypatch, DEAD_S=1.0, REFUSED_IN_A_ROW=4)
     on_piece, wait = _answers()
     d = Sessions(_source(), on_piece, max_in_flight=8, attempts=1, fallback=None)
@@ -213,9 +212,8 @@ def test_a_quiet_time_then_a_moment_the_line_stops_is_not_said(
 
 
 def test_silent_through_a_quiet_time(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Silent, a quiet time longer than DEAD_S (X-Plane loading, the textures built again later),
-    then requests failing still: silent all along, never « answers again » without an answer (the
-    review of 2026-11-23)."""
+    """Silent, a quiet time longer than DEAD_S, then requests failing still: silent all along,
+    never « answers again » without an answer."""
     _on_good_sessions(monkeypatch, DEAD_S=1.0, REFUSED_IN_A_ROW=4)
     monkeypatch.setattr(LiveSession, "up", False)
     lines: list[str] = []
@@ -260,8 +258,7 @@ def test_a_refusal_is_the_refusal_s_rule(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_downloads_failing_now_whatever_came_before(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Failing: a piece failed within FAILING_S and none came in it, whatever came before (13
-    pieces early in a flight, then 12,928 failed, and the window never said it)."""
+    """Failing: a piece failed within FAILING_S and none came in it, whatever came before."""
     _on_good_sessions(monkeypatch, FAILING_S=0.3)
     on_piece, wait = _answers()
     d = Sessions(_source(), on_piece, max_in_flight=2, attempts=1, fallback=None)
@@ -283,8 +280,8 @@ def test_downloads_failing_now_whatever_came_before(monkeypatch: pytest.MonkeyPa
 
 
 def test_not_failing_while_pieces_come() -> None:
-    """A country's source answering nothing while the pieces beyond its bounds keep coming:
-    downloads are not failing (the review of 2026-11-23)."""
+    """The chosen source answering nothing while pieces keep coming: downloads are not
+    failing."""
     Sessions.made = [None]
     d = Sessions(_source(), lambda *a: None, max_in_flight=2, fallback=None)
     try:

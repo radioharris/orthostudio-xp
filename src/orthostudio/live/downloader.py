@@ -6,8 +6,7 @@ arrives.
 One HTTP/2 session (curl_cffi) lives in a thread with its event loop, for the whole run: connections
 stay warm. Up to ``max_in_flight`` requests run at once, taken from a priority queue, so a piece
 asked for urgently overtakes a backlog. A piece that is slow or retried delays only the texture that
-needs it: nothing waits for a whole batch, which is what made the first streamer stall for 40 s
-behind one slow piece.
+needs it: nothing waits for a whole batch.
 
 A 429 or 503 pauses every request to the provider for its Retry-After (5 s when it names none);
 transport errors and other 5xx are retried after 0.5, 1, 2 s; "no imagery here" (the provider's
@@ -18,14 +17,10 @@ which the Live window and the log say; so is a chosen source that answers nothin
 (:meth:`Downloader.failing`).
 
 A piece not there after HEDGE_S is asked of another of the provider's servers as well, and the first
-good answer wins. Otherwise the last pieces of a start can hold X-Plane for half a minute: once, two
-pieces kept LFMN waiting 30 s, and one of them never came.
+good answer wins.
 
 Connections that went dead are dropped: requests on their way and no answer at all for DEAD_S,
-the session's connections are closed and new ones opened, the requests asked again. On a line
-choked for half an hour, Bing's connections stopped answering while staying open; curl kept
-asking on them, each request failing after its timeout, and nothing came again for the rest of the
-flight, when a new connection was answered at once (Calabria, 2026-10-19).
+the session's connections are closed and new ones opened, the requests asked again.
 
 A source that covers one country is completed by Bing Maps (:func:`.providers.fallback_for`): a
 piece outside its bounds is asked of Bing only, and a piece it has no imagery for is asked of Bing
@@ -145,8 +140,7 @@ class Downloader:
 
     def failing(self) -> bool:
         """Whether downloads fail now: the chosen source answers nothing at all, or a piece failed
-        every try within FAILING_S, and none came in that time (a country's source silent, the
-        pieces beyond it coming, is not)."""
+        every try within FAILING_S, and none came in that time."""
         now = time.monotonic()
         failed = self._silent_now or now - self._failed_at < FAILING_S
         return failed and now - self._came_at >= FAILING_S
@@ -219,8 +213,7 @@ class Downloader:
     def _silent(self, now: float) -> bool:
         """Whether the chosen source answers nothing at all: REFUSED_IN_A_ROW requests in a row
         timed out or refused, and no answer from it for DEAD_S, counted from the first ask after a
-        quiet time (:meth:`_get`). A piece slow or failing while others come, or a moment the line
-        stops, is not; a 403 is the refusal's rule (:meth:`refusing`)."""
+        quiet time (:meth:`_get`); a 403 is :meth:`refusing`'s."""
         return self._unanswered >= REFUSED_IN_A_ROW and now - self._heard >= DEAD_S
 
     def _follow(self, now: float) -> None:

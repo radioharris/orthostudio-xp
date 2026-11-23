@@ -121,7 +121,7 @@
 /* the folders of other tools' meshes, a box each, framed as the card is (live.js drawOtherMeshes):
    its name, cut short where too long (whole in its hover), what it gives and its ↑ ↓ on a line; its
    path under them, small as a help and cut short too (whole in its hover); what the pilot acts on;
-   its three buttons on a row of their own, apart (the user, 2026-11-21: too wordy, cramped) */
+   its three buttons on a row of their own, apart */
 .other-meshes { list-style: none; margin: var(--gap) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--gap); }
 .other-mesh { padding: var(--gap) 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); }
 .other-mesh-head { display: flex; align-items: center; gap: var(--gap); }
@@ -180,7 +180,7 @@
 .live-map-bar .info-warn { color: #ffb347; }
 /* the marks of Live's legend, in OrthoStudio XP's legend on the map (styles.css .map-legend,
    .legend-swatch; its own .legend-installed, .legend-ortho4xp, .legend-border and .legend-airport
-   for the user's tiles, the borders and the airports): the textures by how sharp they are
+   for the pilot's tiles, the borders and the airports): the textures by how sharp they are
    (livemap.js PHOTO_COLOURS), the regions installed, the route */
 .legend-zl19 { background: #8e44d9; }
 .legend-zl18 { background: #2f6fd6; }
@@ -204,8 +204,7 @@
 .live-map .live-other { stroke: #22c3d6; fill: #22c3d6; fill-opacity: 0.06; stroke-dasharray: 5 4; }
 .live-map .live-other.is-front { fill-opacity: 0.3; stroke-dasharray: none; }
 .live-map.is-over-other { cursor: pointer; }
-/* the legend keeps its clicks (styles.css .map-legend lets them through to the map under it): one
-   on its words laid over a square of another tool's mesh put that square in front or back */
+/* the legend keeps its clicks, which styles.css .map-legend lets through to the map under it */
 .live-map-wrap .map-legend { pointer-events: auto; }
 .legend-other-mesh { background: rgba(34, 195, 214, 0.06); border: 1px dashed #22c3d6; }
 .legend-other-mesh.is-front { background: rgba(34, 195, 214, 0.3); border: 2px solid #22c3d6; }

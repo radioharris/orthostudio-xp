@@ -762,9 +762,9 @@ def _live_region(root: Path, region: str, ters: str, squares=()) -> Path:
 
 
 def _on_the_line(root: Path) -> tuple[Path, Path]:
-    """Asia's and Europe's regions as the world of 2026-11-01 names two textures on 27° East: Asia
-    the land and the sea of one, the land of the other; Europe the land and the water of both.
-    Asia's DSFs east of the line, Europe's west of it."""
+    """Asia's and Europe's regions naming two textures on 27° East: Asia the land and the sea of
+    one, the land of the other; Europe the land and the water of both. Asia's DSFs east of the
+    line, Europe's west of it."""
     asi = _live_region(
         root,
         "asi",
@@ -783,7 +783,7 @@ def _on_the_line(root: Path) -> tuple[Path, Path]:
 
 def test_a_texture_two_regions_name_takes_the_files_of_both(tmp_path: Path) -> None:
     """A texture on the line between two regions takes the files of both, the DSFs of each
-    naming theirs (issue 36); each kind's file from the first that has it, its masks from the
+    naming theirs; each kind's file from the first that has it, its masks from the
     region whose files mask most of its water, whichever comes first. One rule for every region:
     AutoOrtho's, whose files are copied, as Live's own."""
     asi, eur = _on_the_line(tmp_path)

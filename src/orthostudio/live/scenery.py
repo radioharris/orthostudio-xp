@@ -190,8 +190,7 @@ def read_packs(folder: Path) -> list[FolderPack]:
 
 def _regions_squares(given: Sequence[Path], read: Sequence[list[FolderPack] | None]) -> frozenset:
     """The squares of the regions ``given``, listed only when one of the folders ``read`` has
-    ground Live may take: a region's listing is long (a copy of AutoOrtho's Europe cost up to 57
-    s on a slow Windows disk)."""
+    ground Live may take: a region's listing is long."""
     from orthostudio.live.overlays import squares_of
 
     if not any(pack.kind == GROUND for packs in read if packs for pack in packs):
@@ -470,8 +469,7 @@ def other_mesh_found(xplane: Path | None, root: Path, *, fresh: bool = False) ->
     global _found
     settings = load_settings()
     folders = other_mesh_folders(settings)
-    # a disk plugged in again, a folder added or moved: read at once, where the window said « no
-    # mesh » 30 s more
+    # a disk plugged in again, a folder added or moved: read at once
     there = tuple(other_mesh_there(folder) for folder in folders)
     key = (tuple(folders), there, xplane, root)
     at, was, read = _found

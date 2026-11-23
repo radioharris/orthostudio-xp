@@ -4692,7 +4692,7 @@ def test_the_legend_lines_up_folds_away_and_keeps_the_keyboard() -> None:
     assert "position: absolute" not in fold
     folded_box = rules[".map-legend.is-folded"]
     assert "padding: 0; border: 0;" in folded_box, "only the button left"
-    # on the open legend's ground, dark or light with the theme: lost on the photos without it
+    # on the open legend's ground, dark or light with the theme
     assert "background" not in folded_box and ".map-legend .legend-unfold" not in rules
 
     # one legend for Build's map and Live's: drawn by the shared module (legend.js)

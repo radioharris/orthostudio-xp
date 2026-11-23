@@ -40,7 +40,7 @@ const ROUTE_COLOUR = "#e0572f"; // OrthoStudio XP's own route colour
 const BUILT_EVERY_MS = 3000; // while Live streams: the engine answers "same" while nothing changed
 const OWN_EVERY_MS = 30000; // the user's own tiles asked for again this often (the engine: 30 s)
 const OWN_INSET = 2.5; // px: as OrthoStudio XP's Plan frames a tile, inside it, never on its edge
-const OTHER_INSET = 1; // px: a square of another tool's mesh, inside it, the user's tile frame outside
+const OTHER_INSET = 1; // px: a square of another tool's mesh, inside it, an own tile's frame outside
 const DOUBLE_CLICK_MS = 300; // a click on such a square waits this long for a double-click (a zoom)
 // the legend folded away, and its "Show" (Build's Plan map keeps its own: osxp.mapLegend...)
 const LEGEND_KEY = "osxp.live.mapLegend";
@@ -126,7 +126,7 @@ export function createLiveMap(el, { api, info = null, legend = null, onOther = n
   const ownPane = map.createPane("liveOwn");
   ownPane.style.zIndex = "350";
   ownPane.style.pointerEvents = "none";
-  // over the borders, under the user's own tiles: the squares of another tool's mesh
+  // over the borders, under the pilot's own tiles: the squares of another tool's mesh
   const otherPane = map.createPane("liveOther");
   otherPane.style.zIndex = "345";
   otherPane.style.pointerEvents = "none";
@@ -240,7 +240,7 @@ export function createLiveMap(el, { api, info = null, legend = null, onOther = n
     const inSe = map.layerPointToLatLng(L.point(se.x - px, se.y - px));
     return [[inSe.lat, inNw.lng], [inNw.lat, inSe.lng]];
   }
-  /** The user's own tiles whose line under "Show" is ticked. */
+  /** The pilot's own tiles whose line under "Show" is ticked. */
   const ownShown = () => ownTiles.filter((tile) => shown[`own-${tile.kind}`]);
   function drawOwn() {
     own.clearLayers();
@@ -365,7 +365,7 @@ export function createLiveMap(el, { api, info = null, legend = null, onOther = n
   /**
    * The legend, laid on the map as on Build's Plan map (static/legend.js): how sharp the textures
    * are on the ground, then under "Show" a box for each layer Live draws, its mark beside it, the
-   * kinds of the user's tiles and of other tools' squares only when the map has them. A box
+   * kinds of the pilot's tiles and of other tools' squares only when the map has them. A box
    * ticked for a layer not drawn at this zoom (the regions and the borders up close, the airports
    * far out) is dimmed, why said on hover. Folded away, and its two groups, kept for this viewer.
    */
@@ -384,7 +384,7 @@ export function createLiveMap(el, { api, info = null, legend = null, onOther = n
           legendRow("legend-zl15", t("map.legend_zl15")),
           legendRow("legend-less", t("map.legend_less")),
         ], true);
-        // each group folds on its own, as the legend does (a user, 2026-11-21: the ZL lines away)
+        // each group folds on its own, as the legend does
         const sharpWords = { hide: t("map.legend_sharp_hide"), show: t("map.legend_sharp_show") };
         const sharpHead = groupHead(t("map.legend_title"), LEGEND_SHARP_KEY, "sharp-fold", sharpWords, renderLegend);
         const words = { hide: t("map.legend_show_group_hide"), show: t("map.legend_show_group_show") };

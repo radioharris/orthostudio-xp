@@ -1,6 +1,6 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
-"""The squares X-Plane takes from another pack than Live's: the user's own ortho tiles.
+"""The squares X-Plane takes from another pack than Live's: ortho tiles installed there.
 
 For each 1-degree square, X-Plane draws the ground of the first pack of its list
 (``scenery_packs.ini``, top first) holding a DSF of that square that is not an overlay (a DSF with
@@ -69,10 +69,8 @@ def covered_squares(
     """``{(lat, lon): pack}``: the squares of ``region`` (Live's pack's; all when None) whose
     ground X-Plane takes from a pack checked above ``below`` (Live's link, :func:`lines_above`).
 
-    A pack is ground or overlays as one of its DSFs there says, read up to its properties: packs
-    are one or the other, and simHeaven X-World or Global Forests hold thousands of zipped DSFs,
-    which a first version read every one of, for minutes. OrthoStudio XP's tiles and those
-    imported from Ortho4XP are ground without reading."""
+    A pack is ground or overlays as one of its DSFs there says, read up to its properties.
+    OrthoStudio XP's tiles and those imported from Ortho4XP are ground without reading."""
     wanted = None if region is None else set(region)
     out: dict[tuple[int, int], str] = {}
     for entry, folder in lines_above(xplane, below, own_tiles):
@@ -96,7 +94,7 @@ def covered_squares(
 
 
 def own_squares(xplane: Path, below: str, own_tiles: str = "first") -> dict[tuple[int, int], str]:
-    """The squares X-Plane takes from the user's own scenery, as :func:`covered_squares` finds
+    """The squares X-Plane takes from other scenery, as :func:`covered_squares` finds
     them, with Live's line where it is listed, else where Live's next start lists it. The Live
     window shows them while Live is stopped too: what its next flight shows."""
     return covered_squares(xplane, below, own_tiles=own_tiles)
@@ -108,7 +106,7 @@ def listed_above_live(
     """For each of ``folders`` (its packs), the lines of X-Plane's list checked above Live's
     (``below``, as :func:`own_squares` places it) whose folder is one of its packs on the disk
     (``filesystem.folder_identity``), whatever the line's name (a link, a copy's name, another
-    case on a Mac's disk): the meshes of another tool's folder that X-Plane draws there itself,
+    case): the meshes of another tool's folder that X-Plane draws there itself,
     without photos. The list read once for all."""
     lines = [
         (entry.name, folder_identity(folder))

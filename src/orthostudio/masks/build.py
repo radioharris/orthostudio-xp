@@ -95,10 +95,9 @@ def mask_file_name(til_x: int, til_y: int, *, distance: bool = False) -> str:
 def env_workers() -> int | None:
     """``$OSXP_MASKS_WORKERS`` as an explicit process count, or ``None``.
 
-    The **only** parser of that variable (review 4, finding M2: three copies disagreed on
-    ``0`` and on negative values). A value that is not a positive integer -- ``0``, ``-4``,
-    ``x`` -- is treated as *unset*, so the pipeline's RAM budget and the pool the rule starts
-    can never be computed from two different numbers; no more than a pool may have.
+    The **only** parser of that variable. A value that is not a positive integer -- ``0``,
+    ``-4``, ``x`` -- is treated as *unset*, so the pipeline's RAM budget and the pool the rule
+    starts can never be computed from two different numbers; no more than a pool may have.
     """
     raw = os.environ.get(WORKERS_ENV)
     if raw is None or not raw.strip().lstrip("+").isdigit():
@@ -112,9 +111,8 @@ def worker_count(cells: int, workers: int | None = None) -> int:
 
     The default is ``min(MAX_WORKERS, processors())`` and never the bare core count: the
     caller that budgets the RAM of the node (``pipeline.build._masks_ram_mb``) pays a worker of
-    its profile per process (``masks.rule.masks_worker_mb``), and an unbounded pool made that
-    budget meaningless (review 4, finding M1). An explicit argument is honoured as given -- it is
-    the pipeline's own count.
+    its profile per process (``masks.rule.masks_worker_mb``). An explicit argument is honoured
+    as given -- it is the pipeline's own count.
     """
     if workers is None:
         workers = env_workers()

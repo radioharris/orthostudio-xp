@@ -2,26 +2,17 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The files of the squares round the aircraft, made as X-Plane comes and taken away behind it.
 
-X-Plane holds about 4 x 3 squares of DSFs round the aircraft (``orthostudio.live.evict``'s
-``xplane_tiles``, measured) and reads, when it loads one, every ``.ter`` file its DSF names, the
-water masks and the textures those name. Live's pack keeps those files only for the squares of that
-window and a ring round it (:data:`RING`): made when the window comes near, for a start before the
-plugin lets X-Plane go, in flight a square of flight ahead (4 to 7 minutes at 480 kt); taken away
-once the window is two squares away (:data:`KEEP`), the textures built kept (the disk budget's,
-``orthostudio.live.evict``). The pack had them all before: 400,000 textures and 684,000 ``.ter``
-for Europe, four minutes to set up and three to lay out again for another zoom, on APFS alone,
-whose clones cost nothing (2026-09-29).
+Live's pack keeps the ``.ter`` files, water masks and textures only for the squares of X-Plane's
+window round the aircraft (``orthostudio.live.evict``'s ``xplane_tiles``) and a ring round it
+(:data:`RING`): made when the window comes near, for a start before the plugin lets X-Plane go, in
+flight a square of flight ahead; taken away once the window is two squares away (:data:`KEEP`),
+the textures built kept (the disk budget's, ``orthostudio.live.evict``).
 
 A square's files come from the regions whose DSFs the pack holds there and next to it
-(:meth:`RegionTextures.owner`): its ``.ter`` files and water masks copied, small files, or made
-from their names (Live's own mesh); each texture not built, a name of the neutral texture of its
-size (a hard link, :class:`NeutralPool`), which every disk Live's folder may be on has
-(``orthostudio.live.filesystem``). A thread decides, a process of its own does the file operations
+(:meth:`RegionTextures.owner`): its ``.ter`` files and water masks copied, or made from their
+names (Live's own mesh); each texture not built, a name of the neutral texture of its size (a hard
+link, :class:`NeutralPool`). A thread decides, a process of its own does the file operations
 (:func:`run_ops`), and a square whose files fail is tried again later, never stopping the others.
-Measured with the real names of a start at Frankfurt, the most in Europe: 12,906 textures round
-X-Plane's window in 2.7 s on the Mac's SSD, 3.8 s on a hard drive; the heaviest new column in
-flight, 1,680 textures, 0.4 s on the hard drive, 0.3 s of processor and 1.5 MB written
-(2026-09-29).
 """
 
 from __future__ import annotations
@@ -359,8 +350,8 @@ class RegionTextures:
         it, each kind's file from the first of them that has it, each ``.ter`` of another kind
         (:data:`OTHER`) from the first of them that names it, its masks from the one whose files
         mask most of its water (:func:`_water_rank`), the first of those. A texture on the line
-        between two owners so has every file either DSF names: one missing, X-Plane cancels the
-        whole square (issue 36). A texture no owner names, no DSF of the pack names: left out."""
+        between two owners so has every file either DSF names. A texture no owner names, no DSF of
+        the pack names: left out."""
         key = f"{square[0]},{square[1]}"
         named: dict[str, list[tuple[int, int]]] = {}  # name: (region, its kinds), in their order
         for i, squares in enumerate(self._squares):

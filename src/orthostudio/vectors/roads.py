@@ -221,7 +221,7 @@ def _square_bands(square: _Square) -> BaseGeometry:
 def square_workers() -> int:
     """The processes one tracing buffers its squares on: the engine's CPU tasks
     (:func:`orthostudio.machine.cpu_workers`) shared by the tracings that may run at once
-    (:func:`orthostudio.machine.subprocess_slots`): 4 on a 14-core Mac, 1 on 4 cores."""
+    (:func:`orthostudio.machine.subprocess_slots`)."""
     return max(1, cpu_workers() // subprocess_slots())
 
 

@@ -1801,17 +1801,16 @@ def _folds(regions: list, others: list, kept: list, seen: list | None = None) ->
 
 @pytest.mark.skipif(NODE is None, reason="needs node")
 def test_the_two_long_lists_fold_and_open_by_themselves() -> None:
-    """The regions and other meshes fold away under their titles, a summary beside each (the
-    user, 2026-11-21: the Settings too long): the regions installed and their updates, an
-    update's colour the accent's; the folders and their squares in front of Live. Folded by
-    default; open by themselves while something needs the pilot, said in a word each: no region
-    installed, an update to download or ready, one held back, an install running or stopped, the
-    list not come; a folder not there or with no mesh, a pack left aside he may have meant; the
-    badge in the warning's colour for a problem. A button refused is none: said under the field,
-    the list open since it holds the buttons. Once he opened or folded a list, as he left it, unless
-    something needs him that did not as he chose; what needed him then is cut, once every word is
-    known (the host's list come), to what still does, so that a need gone then back opens it
-    again."""
+    """The regions and other meshes fold away under their titles, a summary beside each: the
+    regions installed and their updates, an update's colour the accent's; the folders and their
+    squares in front of Live. Folded by default; open by themselves while something needs the
+    pilot, said in a word each: no region installed, an update to download or ready, one held
+    back, an install running or stopped, the list not come; a folder not there or with no mesh, a
+    pack left aside the pilot may have meant; the badge in the warning's colour for a problem. A
+    button refused is none: said under the field, the list open since it holds the buttons. A list
+    opened or folded by the pilot stays as left, unless something needs the pilot that did not
+    then; what needed the pilot then is cut, once every word is known (the host's list come), to
+    what still does, so that a need gone then back opens it again."""
     six = [{"id": i} for i in ("eur", "na", "sa", "afr", "asi", "aus_pac")]
     listed = [
         {"id": r["id"], "installed": True, "changed": 0, "waiting": False, "download": 1e9}
@@ -1839,7 +1838,7 @@ def test_the_two_long_lists_fold_and_open_by_themselves() -> None:
     there = {"unused": None, "refused": [], "front": []}
     alps = {**there, "folder": "/Alps", "front": ["+45+006"]}
     gone = {**there, "folder": "/Gone", "unused": "gone"}
-    tile = [{"name": "zOrtho4XP_+45+006", "why": "photos"}]  # a pack he may have meant
+    tile = [{"name": "zOrtho4XP_+45+006", "why": "photos"}]  # a pack the pilot may have meant
     photos = {**there, "folder": "/O4XP", "refused": tile}
     already = {**there, "folder": "/Pyr", "refused": [{"name": "z_ao_pyr", "why": "already"}]}
     others = [None, {"folders": [alps]}, {"folders": [alps, gone]}, {"folders": [photos, already]}]
@@ -1859,7 +1858,7 @@ def test_the_two_long_lists_fold_and_open_by_themselves() -> None:
         [folded, ["update:eur", "failed:afr"]],  # nothing went: the same choice
         [folded, ["update:eur"]],  # the install went on: its failure no longer seen
         [folded, []],
-        [None, ["update:eur"]],  # he never chose
+        [None, ["update:eur"]],  # never chosen
     ]
     said = _folds(regions, others, kept, cut)
     en = said["en"]
@@ -1873,7 +1872,7 @@ def test_the_two_long_lists_fold_and_open_by_themselves() -> None:
             "needs": ["update:eur"],
             "known": True,
         },
-        {  # the disk's word, the host's list not come: what needs him not all known
+        {  # the disk's word, the host's list not come: what needs the pilot not all known
             "badges": [
                 {"text": "1 installed", "kind": None},
                 {"text": "1 update", "kind": "warn"},
@@ -2137,9 +2136,9 @@ def test_a_click_while_an_install_runs_is_queued_with_its_answers(
     home: Path, tmp_path: Path
 ) -> None:
     """Install or Update while another install runs queues the region, with the answers of its
-    click (discussion 47: four updates, a click each at the end of the one before). Each starts as
-    the one before ends, done or failed, in the order clicked; one queued or under way is not
-    queued twice; one that failed says why on its row (its own word, the page's one source)."""
+    click. Each starts as the one before ends, done or failed, in the order clicked; one queued or
+    under way is not queued twice; one that failed says why on its row (its own word, the page's
+    one source)."""
     c = queue_control(tmp_path / "X-Plane 12")
     c.install_region("eur", whole=False)
     c.install_region("sa", whole=False, keep_old=True)

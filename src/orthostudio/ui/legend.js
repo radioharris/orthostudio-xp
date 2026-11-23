@@ -36,11 +36,9 @@ export function setChevron(button, open, words) {
 
 /**
  * The legend in `box`, drawn anew, folded or open as kept under `key`. Folded, one ordinary button
- * brings it back (a user folded it to see the map under it, 2026-09-25); open, the line `head()`
- * gives with the chevron at its end, one line high, then the lists `body()` gives, both asked only
- * then. The control that had the focus has it again, named by its `data-keep`: a redraw on every
- * zoom took it to the first box, whichever had it. `words`: {show, hide}, the button's and the
- * chevron's.
+ * brings it back; open, the line `head()` gives with the chevron at its end, one line high, then
+ * the lists `body()` gives, both asked only then. The control that had the focus has it again,
+ * named by its `data-keep`. `words`: {show, hide}, the button's and the chevron's.
  */
 export function drawLegend(box, { key, words, head, body }) {
   const open = legendOpen(key);
@@ -59,10 +57,10 @@ export function drawLegend(box, { key, words, head, body }) {
   if (focused) box.querySelector(`[data-keep="${focused}"]`)?.focus();
 }
 
-/** A group's title with a chevron that folds its lines away, as the legend itself folds (a user,
- * 2026-09-26), open or folded as kept under `key` (legendOpen() tells the page whether to give
- * its lines): `keep` names the chevron for the focus, `words` {show, hide} its hover,
- * `redraw` draws the legend again once it is clicked. */
+/** A group's title with a chevron that folds its lines away, as the legend itself folds, open or
+ * folded as kept under `key` (legendOpen() tells the page whether to give its lines): `keep`
+ * names the chevron for the focus, `words` {show, hide} its hover, `redraw` draws the legend
+ * again once it is clicked. */
 export function groupHead(title, key, keep, words, redraw) {
   const open = legendOpen(key);
   const button = setChevron(h("button", {
@@ -92,7 +90,7 @@ export function legendRow(swatch, text, cls = null) {
 /**
  * A line with the box that shows or hides what it marks, the page keeping the choice: `keep`
  * names the box for the focus; `idle`, ticked but not drawn at this zoom, its words dimmed, why
- * in `hint`, on hover, where it was in brackets after the name (a user, 2026-09-26).
+ * in `hint`, on hover.
  */
 export function legendToggle({ swatch, text, hint = null, checked, keep, idle = false, onChange }) {
   const input = h("input", { type: "checkbox", checked, "data-keep": keep, onchange: (ev) => onChange(ev.target.checked) });

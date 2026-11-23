@@ -656,8 +656,7 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }  /* 
 .map-legend .legend-group-head { align-items: center; margin: 6px 0 2px; }
 .map-legend .legend-group-head .legend-title { flex: 1; margin: 0; }
 /* Folded, only the button is left, an ordinary small button like the others set on the map, on
-   the open legend's ground (dark or light with the theme): drawn by its border alone since every
-   button is (2026-11-02), it was lost on the photos (a user, 2026-11-21). */
+   the open legend's ground (dark or light with the theme). */
 .map-legend.is-folded { padding: 0; border: 0; }
 .map-legend .legend-toggle label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .map-legend .legend-toggle input { margin: 0; width: 13px; height: 13px; flex: none; }

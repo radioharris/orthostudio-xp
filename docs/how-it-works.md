@@ -405,12 +405,10 @@ those still waiting are not searched. A tile *Find and apply…* is stopped on b
 is left as it was, and one whose *Apply* could not be done (X-Plane running) says why in its cell.
 
 The search and *Apply* use every core of the processor. On Windows and Linux, *Clouds: half of the
-processor* (Settings, For experts, This app) holds them to about half of it (OpenCV on half of the
-processor's logical cores, *Apply* making two textures at once instead of four): they are slower,
+processor* (Settings, For experts, This app) holds them to about half of it: they are slower,
 and the computer works less hard, for one that crashes or runs too hot while it works on the
 clouds. It is taken once OrthoStudio XP is quit and opened again (closing the window leaves it
-running), and every profile shares it. A Mac does not offer it: OpenCV there hands its work to the
-system, which takes no such limit.
+running), and every profile shares it. A Mac does not offer it.
 
 A tile filed elsewhere that you build again is built in the workshop, beside the cache, then put
 back in its folder in place of the old version: moved there at once on the workshop's disk, copied
@@ -735,12 +733,9 @@ a tile. The decal goes on land only unless *Fine ground detail on the sea too* i
 rivers never have one.
 
 **Towns at night.** *Night textures*, in step 1 of the Plan ([build.md](build.md) says what they
-show), gives each photo of the land with a street lamp a night texture of its own, in the tile's
-`textures_night` folder: Live's drawing at full strength, made once while the photos download.
-NASA's grid of the square comes from Live's regions on the disk, else it is downloaded once with
-its region's into the data folder. The photo's terrain file names its night texture and how bright
-X-Plane shows it, the strength of Live's *Night lights*: changing it in Live rewrites that line in
-the Library's tiles at once, nothing drawn again; *No* takes the line out and keeps the files.
+show), gives the tile Live's night lights, in its `textures_night` folder, made while the photos
+download. They follow the strength of Live's *Night lights* as soon as it is saved, *No*
+included, without building the tile again.
 
 **What the map marks.** A square you already have in X-Plane is outlined in green, a square you
 chose in blue. A square built and kept in the Library but not in X-Plane (*Build only*, or taken

@@ -2,21 +2,18 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The night textures of Live's textures, made while it is night in X-Plane.
 
-Each texture the streamer plans (orthostudio.live.streamer) gets its night texture
-(orthostudio.live.night) from the level X-Plane will read of it down, counted from the top of its
-file, a quarter of its side: a 4096 px day texture a 1024 px night one, a 256 px one far
-away a 64 px one, so the far towns light up early and cheaply, as the far ground does. Night, for
-Live, is from :data:`NIGHT_AHEAD_H` before sunset to sunrise, by X-Plane's time at the aircraft
-(:func:`night_at`): X-Plane never reads again a level it took, so a night texture must be there
-before X-Plane reads its texture, as the day one.
+Each of the streamer's textures (orthostudio.live.streamer) gets its night texture
+(orthostudio.live.night, :meth:`NightWork.want`), a quarter of its side: a 4096 px day texture a
+1024 px night one, a 256 px one a 64 px one. Night, for Live, is from :data:`NIGHT_AHEAD_H` before
+sunset to sunrise, by X-Plane's time at the aircraft (:func:`night_at`).
 
 One rule, in one place (:meth:`NightWork.pump`, at each turn of the streamer's loop): how many
 processes make the night textures (a team at a start at night, one in flight, none by day), which
 textures they get, and what is done with what they made. The processes' jobs only say they ended.
-A texture's night is made from two things only, each read from the disk: X-Plane's roads of its
-squares (the Global Scenery's DSF, else the overlays of Live's regions, cut from it) and NASA's
-grid of the square (``<region>/night/<square>.png``, installed with the region).
-``OSXP_LIVE_NIGHT_GRIDS`` names another folder of grids, looked in first: the test flights'.
+A texture's night is made from X-Plane's roads of its squares (the Global Scenery's DSF, else the
+overlays of Live's regions) and NASA's grid of the square (``<region>/night/<square>.png``,
+installed with the region). ``OSXP_LIVE_NIGHT_GRIDS`` names another folder of grids, looked in
+first: the test flights'.
 """
 
 from __future__ import annotations
@@ -494,11 +491,8 @@ class NightWork:
     # --- what the streamer says ------------------------------------------------------------
 
     def want(self, name: str, level: int) -> None:
-        """``name``'s night wanted from ``level`` (the streamer's plan, from 4096 px), at night
-        only: X-Plane counts a file's levels from its top, so its night is counted so too, or the
-        night of a 2048 px file was a hole, black, where X-Plane reads it (the review of
-        2026-11-11). The plan asks for every texture in reach every 2 s: the lock is taken only
-        for a change (:meth:`_asked`)."""
+        """``name``'s night wanted at ``level``, at night only; the lock is taken only for a
+        change (:meth:`_asked`)."""
         if not self.night:
             return
         level = max(0, level - max(0, self.top_of(name)))
@@ -565,11 +559,9 @@ class NightWork:
         return self.start_at is not None and self.night and not self.gave_up and not self.broken
 
     def start_left(self, day_left: int = 0) -> int:
-        """Night textures still to make which a start waits for, as for its photos (0 by day): those
-        of X-Plane's squares round it (its whole pack's, other regions' too, 11,142 at a Paris
-        start, the review of 2026-11-11), wanted or being made, as the start's plan wants them.
-        ``day_left``: the start's day textures still to build; once none is,
-        :data:`NIGHT_WAIT_S` at most."""
+        """Night textures still to make which a start waits for (0 by day): those of X-Plane's
+        squares round it, wanted or being made. ``day_left``: the start's day textures still to
+        build; once none is, :data:`NIGHT_WAIT_S` at most."""
         if not self.start_night:
             return 0
         with self.lock:
@@ -591,10 +583,9 @@ class NightWork:
         return left
 
     def back_to_black(self, name: str) -> None:
-        """``name`` made neutral or coarser: its night black (:meth:`_black`), made again once the
-        streamer's plan wants it again. One being made meanwhile is not counted made, and is put
-        back so once made (:meth:`pump`): counted at the level it was given, a night 1024 px wide
-        stayed over a texture made 256 px (the review of 2026-11-11)."""
+        """``name`` made neutral or coarser: its night black (:meth:`_black`), made again once
+        wanted again (:meth:`want`). One being made meanwhile is not counted made, and is put back
+        black once made (:meth:`pump`)."""
         with self.lock:
             self.made.pop(name, None)
             self.wanted.pop(name, None)
@@ -609,9 +600,7 @@ class NightWork:
         """At each turn of the streamer's loop, X-Plane running or not yet: what the processes
         made recorded; as many processes as the moment wants (a team while a start at night waits,
         until it waits for none; one in flight; none by day); and two jobs a process, a few
-        textures of a square each, the nearest first. Only here: jobs given from their pool's own
-        thread blocked it for good when one of its processes died (Python 3.14, the review of
-        2026-11-11)."""
+        textures of a square each, the nearest first. Jobs are given here only."""
         now = time.monotonic()
         if now - self._pumped < 0.25:
             return

@@ -622,7 +622,7 @@ def fetch_zip(
 ) -> Path:
     """``z`` whole at ``path``, resumed where an earlier try stopped, checked; ``add`` told each
     byte that comes (or goes, a part thrown away). ``stop`` stops it at the next megabyte, and
-    between two tries: a quit during a line's cut once waited out every try and pause."""
+    between two tries."""
     import httpx
 
     for attempt in range(ATTEMPTS):

@@ -983,8 +983,7 @@ def _all_reduced(
     """Each texture's layer of a cloud (``made``: its name, its id and what makes it) reduced to
     the picture and laid in ``rgb`` and ``alpha`` over ``box`` (:func:`_lay_reduced`), as many
     at once as Apply makes (:func:`~orthostudio.clouds.laying.at_once`): a picture's pixel shows
-    one texture, so they lay apart and in any order the same picture, laid under a lock. One by
-    one, the 49 of a cloud of 1 670 km² took 27 s of getting its images (-02-050, 2026-11-07)."""
+    one texture, so they lay apart and in any order the same picture, laid under a lock."""
     lock = threading.Lock()
 
     def one(name: str, t: TextureId, make: Callable[[], Layer | None]) -> None:

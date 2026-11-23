@@ -262,8 +262,7 @@ def test_the_list_is_manifest_2_kept_apart_from_the_one_of_lives_before(
 
 
 def test_a_stop_ends_the_tries_of_a_cut_line_at_once(tmp_path: Path) -> None:
-    """A stop while the line is cut ends the download at once: no other try, no pause waited out
-    (a quit during a cut once waited them all)."""
+    """A stop while the line is cut ends the download at once: no other try, no pause waited out."""
     import threading
 
     tries: list[int] = []

@@ -3,12 +3,9 @@
 """OpenCV for the clouds, downloaded at their first use.
 
 The detector's networks run on OpenCV, and a cloud's replacement does its pixel work with it.
-Inside the installer it would have made it half as large again (35 to 61 MB more, compressed,
-on 74 MB on the Mac, much of it video codecs the clouds never use), for a feature some never
-open: it is fetched with the networks instead, once, as PyPI publishes it (one abi3 wheel per
-system, which any CPython the app ships can import), checked against the digest ``uv.lock``
-holds, and unpacked in ``$OSXP_HOME/libs/``. Where it is installed already (a checkout's
-environment, the tests), that one is used.
+It is fetched with the networks, once, as PyPI publishes it (one abi3 wheel per system),
+checked against the digest ``uv.lock`` holds, and unpacked in ``$OSXP_HOME/libs/``. Where it is
+installed already (a checkout's environment, the tests), that one is used.
 
 ``cv2`` here stands for the module: it is imported at its first use, so that the engine starts,
 and builds the tiles without clouds, where it is not there. Its threads are set then, once
@@ -108,8 +105,7 @@ hands it to the system's own queue (GCD), which takes no limit but one core."""
 def half_processor() -> bool:
     """Whether the clouds take half of the processor (``expert.clouds_half_processor``, where
     :data:`HALVES`): OpenCV's threads, and the textures Apply makes at once. Read once, when first
-    asked: OpenCV's threads are set before it works, as changing them while it works could crash
-    it, so a change is taken at the next start."""
+    asked: a change is taken at the next start."""
     return HALVES and _asked()
 
 

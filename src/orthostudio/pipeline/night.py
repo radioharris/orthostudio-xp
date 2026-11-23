@@ -2,11 +2,10 @@
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """The night textures of a tile: its towns' lights, which X-Plane adds to the photo at night.
 
-Live's drawing (:mod:`orthostudio.live.night`), from X-Plane's own roads and NASA's density grid
-of the square, at full strength, a night texture for each photo of the land holding a light. How
-bright X-Plane shows them is the ``LUMINANCE`` line of the terrain files
-(:data:`orthostudio.live.night.LUMINANCE`), Live's strength: a change of it rewrites those lines
-alone (:func:`set_strength`), never the textures.
+Drawn as Live draws them (:mod:`orthostudio.live.night`), at full strength, a night texture for
+each photo of the land holding a light. The terrain files name them at Live's strength, their
+``LUMINANCE`` line (:data:`orthostudio.live.night.LUMINANCE`): a change of it rewrites those
+lines alone (:func:`set_strength`), never the textures.
 """
 
 from __future__ import annotations
@@ -128,7 +127,7 @@ def grid_of(tile: TileRef) -> Path | None:
 
 def _draw(job: tuple[str, str, list[str], str | None]) -> tuple[str, bool]:
     """In a drawing process: the night texture of one texture, at full strength, the roads read in
-    a process of their own (a DSF read leaves its memory behind)."""
+    a process of their own."""
     from orthostudio.live.nightwork import make_night
 
     pack, name, dsfs, grid = job

@@ -579,8 +579,8 @@ def sources_of(meta: dict) -> list[str]:
 def _front_record(front: Mapping[tuple[int, int], Path]) -> dict[str, dict]:
     """``front`` as the pack's marker records it, {"+45+006": {"source": region, "size": bytes,
     "mtime_ns": time}}: the region and its DSF there as it is now, so that the DSF edited again
-    (the pilot's relief fixed once more) sets the pack up again (:func:`front_changed`), where the
-    times of its region's folders do not change (:func:`_fingerprints`)."""
+    sets the pack up again (:func:`front_changed`), where the times of its region's folders do not
+    change (:func:`_fingerprints`)."""
     record = {}
     for square, source in sorted(front.items()):
         try:

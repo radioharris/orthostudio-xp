@@ -410,8 +410,7 @@ class StreamerTest(unittest.TestCase):
         self.assertTrue(any("stays as it was" in ln for ln in lines))
 
     def test_a_texture_made_coarser_takes_its_night_down_with_it(self):
-        """Kept sharp, a night texture took fifteen times its day one (the review of
-        2026-11-11): black, then made again at the level the next plan wants."""
+        """A texture made coarser by the disk budget: its night made black."""
         from unittest import mock
 
         from orthostudio.live import streamer as streamer_module

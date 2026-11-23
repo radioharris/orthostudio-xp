@@ -122,8 +122,7 @@ PLAN_ASK_EVERY_S = 60.0  # SimBrief is asked for the pilot's last plan at most t
 JUMP_KM = 20.0  # a position this far from the last one is a new start: a teleport, a new flight
 PLAN_EVERY_S = 2.0
 REPORT_EVERY_S = 1.0  # what the Live window is told, this often
-# X-Plane held while Live told it to wait this recently: the plugin asks every 0.25 s while it
-# waits, and Live's pause is answered at each turn
+# X-Plane held while Live told it to wait this recently
 HELD_FRESH_S = 2.0
 WRITES_EVERY_S = 300.0  # what Live wrote, by kind, in the log this often (writes.py)
 # what the pack's record says its textures follow (texture.photo_floor): ZL13, ZL14 for the sources
@@ -135,8 +134,7 @@ STALL_S = 60.0
 PAUSE_UNREAD_S = 10.0  # X-Plane paused for a new start in flight that Live cannot read: let go
 # A piece of a texture X-Plane waits for (urgency <= 0), awaited this long: the texture is built
 # without it, from the zoom below where it is in, as a piece that failed, and built again later
-# with it. At a start at LSGG, one piece Bing never sent held X-Plane 20 s, the downloader's four
-# tries.
+# with it.
 STUCK_S = 10.0
 PATCH_RETRY_S = 60.0  # a texture built without such pieces is built again after this, doubled
 PATCH_RETRY_MAX_S = 1800.0  # each time they still do not come, up to this
@@ -615,7 +613,7 @@ class Streamer:
                 watered=self._watered,
             )
             self.names.yielding = self.yielding
-        self.night = night  # the night textures of the textures planned (live.nightwork)
+        self.night = night  # the night textures of Live's textures (live.nightwork)
         if night is not None:
             night.team = self.workers  # the start's team: as many as the encoders, idle by then
             night.top_of = self.top_of  # its levels counted from its file's top, as X-Plane does
@@ -690,10 +688,8 @@ class Streamer:
         return done
 
     def _night_black(self, name: str) -> None:
-        """A texture's night black again (NightWork.back_to_black), wanted again by the next plan
-        at the level X-Plane reads, when it is night: a texture made coarser or neutral, set to a
-        new zoom's size, or a night texture the disk budget takes on its own. Kept sharp under a
-        texture made coarser, it took fifteen times its day texture (the review of 2026-11-11).
+        """A texture's night black again (NightWork.back_to_black): a texture made coarser or
+        neutral, set to a new zoom's size, or a night texture the disk budget takes on its own.
         Windows refusing a file X-Plane holds open: said, and left as it was."""
         if self.night is None:
             return
@@ -731,9 +727,8 @@ class Streamer:
 
     def _refit(self, name: str, level: int) -> None:
         """Under ``self.lock``: a texture set to a new zoom's size as its square was made
-        (orthostudio.live.names), the level its new file keeps; its night black, made again
-        counted from the new file's top: left as it was, X-Plane read a hole there, black, until
-        the next night (the review of 2026-11-11)."""
+        (orthostudio.live.names), the level its new file keeps; its night black
+        (:meth:`_night_black`)."""
         if name in self.built:
             self.built[name] = level
             self.copied_up.discard(name)  # its file written again: no copy there any more
@@ -1584,9 +1579,8 @@ class Streamer:
 
         def give_up_stuck(pool) -> None:
             """Pieces awaited more than STUCK_S by a texture X-Plane waits for: it is built without
-            them, from the zoom below where it is in, and built again later (``patchy``). The
-            status line counts such builds: a line per texture filled the log, 1,034 lines of 1,152
-            with the source gone (2026-11-23). The downloader goes on, and what it brings is cached
+            them, from the zoom below where it is in, and built again later (``patchy``); the
+            status line counts such builds. The downloader goes on, and what it brings is cached
             for the texture's next build."""
             now = time.monotonic()
             stuck = [k for k, t in asked_at.items() if now - t > STUCK_S]
@@ -2077,9 +2071,7 @@ class Arrival:
 
     def holding(self, now: float) -> bool:
         """X-Plane waits for it now: Live told it to wait, at the plugin's HOLD or in its pause,
-        less than HELD_FRESH_S ago, and not to go since. Live's window and log said "held" 83 s
-        after X-Plane went on with nothing downloading (2026-11-23); a late answer to an ask sent
-        before the go, or X-Plane quitting while held, is forgotten as the plugin stops asking."""
+        less than HELD_FRESH_S ago, and not to go since."""
         return 0.0 <= now - self.told_wait < HELD_FRESH_S
 
     def near(self, lat: float, lon: float) -> bool:
@@ -2130,11 +2122,9 @@ def start_count(streamer: Streamer, arrival: Arrival, now: float, fresh: bool = 
     not made yet (:meth:`Streamer.squares_left`, ``sq=``). The plugin, the
     pause window and the start's readiness take it as it is (``fresh``), Live's window as it was
     at most :data:`COUNT_EVERY_S` before, X-Plane held or not; the start is ready when no texture
-    and no square is left. Live's window said ready, or nothing, while X-Plane waited for 8,700
-    night textures, and its count stood still once X-Plane was let go (the review of
-    2026-11-11). No piece for STALL_S: NIGHT_WAIT_S at most, then stalled (:meth:`Arrival.count`).
-    The night beginning here (the time the plugin read), the start is planned again at once: its
-    night textures counted with it."""
+    and no square is left. No piece for STALL_S: NIGHT_WAIT_S at most, then stalled
+    (:meth:`Arrival.count`). The night beginning here (the time the plugin read), the start is
+    planned again at once (:meth:`Streamer.plan`)."""
     if not fresh and arrival.shown is not None and now - arrival.counted < COUNT_EVERY_S:
         return arrival.shown
     arrival.counted = now

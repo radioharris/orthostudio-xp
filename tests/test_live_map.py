@@ -176,8 +176,7 @@ def test_the_map_s_legend_is_osxp_s_laid_on_the_map() -> None:
     """Live's map has the legend of OrthoStudio XP's Plan map, laid on it, folded away or open, by
     the same module (static/legend.js) and the same style sheet: how sharp the textures are, then
     under "Show" a box for each layer Live draws, never the Plan's street map; the legend folded,
-    its "Show" folded and each box kept for the viewer under Live's own keys. The line of before,
-    under the map, is gone."""
+    its "Show" folded and each box kept for the viewer under Live's own keys."""
     html = (UI_DIR / "index.html").read_text()
     wrap = html[html.index('<div class="live-map-wrap">') :]
     wrap = wrap[: wrap.index("</section>")]
@@ -191,7 +190,7 @@ def test_the_map_s_legend_is_osxp_s_laid_on_the_map() -> None:
     assert "key: LEGEND_KEY," in js and "legendOpen(LEGEND_SHOW_KEY)" in js  # kept by legend.js
     assert 'const LEGEND_KEY = "osxp.live.mapLegend";' in js
     assert 'const LEGEND_SHOW_KEY = "osxp.live.mapLegendShow";' in js
-    # the sharpness lines fold on their own, as "Show" does (2026-11-21)
+    # the sharpness lines fold on their own, as "Show" does
     assert 'const LEGEND_SHARP_KEY = "osxp.live.mapLegendSharp";' in js
     assert "legendOpen(LEGEND_SHARP_KEY)" in js
     assert 'const SHOWN_KEY = "osxp.live.mapShown.";' in js

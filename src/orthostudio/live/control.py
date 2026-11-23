@@ -139,9 +139,7 @@ app (``tools/live/flights/fly.py --streamer app --cold``), whose folder of its o
 
 def stream_meshes(xp: Path) -> Meshes:
     """The meshes the stream lays its photos on: a test flight's region (SOURCE_ENV), else those
-    installed (:func:`default_meshes`). The checks read the same: a cold test flight's window said
-    « No mesh yet » while Live streamed onto the region the flight gave it (the user's Shadow,
-    2026-10-04)."""
+    installed (:func:`default_meshes`). The checks read the same."""
     named = os.environ.get(SOURCE_ENV)
     return Meshes([Path(named)], {}) if named else default_meshes(xp)
 
@@ -378,8 +376,7 @@ def _size_of(folder: Path) -> int | None:
 
 
 def _join(thread: threading.Thread, timeout: float) -> None:
-    """``thread.join(timeout)``, a thread made the installs' holder under the lock and started just
-    after it waited for first: joined before its start, it raised."""
+    """``thread.join(timeout)``, a thread not started yet waited for first."""
     end = time.monotonic() + timeout
     while thread.ident is None and time.monotonic() < end:
         time.sleep(0.01)
@@ -720,10 +717,7 @@ class LiveControl:
         X-Plane to quit when X-Plane reads the pack, which comes out then), the window goes once
         that is done (:meth:`gone`); the installs stop as the window's Stop stops them, the night
         grids' own download too, each going on from there the next time, waited for as the
-        process ends (:meth:`wait_idle`). A Quit during an install let it go on unseen after the
-        window: Python, ending, ran its download pool's whole queue of zips, then cut the
-        install's thread, the region left without its overlays and the regions queued behind it
-        dropped unsaid (2026-11-23)."""
+        process ends (:meth:`wait_idle`)."""
         self.closing = True
         if self._state != IDLE:
             self.stop()
@@ -926,7 +920,7 @@ class LiveControl:
 
     def _fetch_night_grids(self, catalog: dict) -> None:
         """The night lights' grids of the regions installed before them (2.0), a few megabytes
-        each (Europe 11.6), downloaded by Live itself, in the background and unseen on the page,
+        each, downloaded by Live itself, in the background and unseen on the page,
         while it streams too: they are no file X-Plane reads, and the night's process takes each
         one as it comes. Not while the installs' place is held (an install brings them; the place
         is never free while regions wait in the queue: :meth:`_take_turn`), nor once Live goes
@@ -1125,9 +1119,7 @@ class LiveControl:
         """The lock held: where the installs' place is free, the region first in the queue takes
         it, held by the calling thread while its install starts (:meth:`_start`); None otherwise.
         Called wherever the queue grows or the place is freed, in the same hold of the lock, so
-        that the place is never free while regions wait (one check and one taking: the night
-        grids' own download, started between the two, once ran beside an install on the same
-        files, the review of 2026-11-11)."""
+        that the place is never free while regions wait (one check and one taking)."""
         if self._install_thread is not None or not self._queue:
             return None
         self._turn = self._queue.pop(0)
@@ -1337,14 +1329,11 @@ class LiveControl:
         while Live streams, nor while the region is being installed (any region, by the night
         grids' or the river masks' rounds) or waits in the window's queue, whose turn would install
         it again, nor while X-Plane runs, which reads the region's roads, forests and buildings
-        straight from it (:meth:`_may_swap`, ``osxpregions.XPLANE_READS``; a campaign of
-        2026-11-18 deleted them under a flying X-Plane). Nothing else reads a kept old mesh then,
-        and a start with X-Plane running on a mesh that changed is refused
+        straight from it (:meth:`_may_swap`, ``osxpregions.XPLANE_READS``). Nothing else reads a
+        kept old mesh then, and a start with X-Plane running on a mesh that changed is refused
         (``region.pack_to_redo``). One check and one taking, as an install's: the installs' one
-        place is held meanwhile where it is free, as the night grids' own download, started from
-        the list's read while the region was deleted, wrote half of it back, listed as installed
-        (the review of 2026-11-11), and given on after (:meth:`_give_place`). Mesh back to new
-        after, once no region keeps an old mesh (:meth:`_mesh_follows_kept`)."""
+        place is held meanwhile where it is free, and given on after (:meth:`_give_place`). Mesh
+        back to new after, once no region keeps an old mesh (:meth:`_mesh_follows_kept`)."""
         self._stop_night_grids()
         with self._lock:
             running = self._install_thread

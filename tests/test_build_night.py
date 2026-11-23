@@ -139,7 +139,7 @@ def test_the_square_s_grid_dims_the_country(tmp_path: Path) -> None:
     from PIL import Image
 
     grid = tmp_path / f"{T.name}.png"
-    Image.fromarray(np.zeros((288, 288), np.uint8)).save(grid)  # NASA saw nothing here
+    Image.fromarray(np.zeros((288, 288), np.uint8)).save(grid)  # a grid without light
     plain = _run_night(tmp_path / "plain", _dsf_dir(tmp_path / "plain"))
     dark = _run_night(tmp_path / "dark", _dsf_dir(tmp_path / "dark"), grid)
     name = night_name(_photo(TOWN_TEX))
@@ -218,7 +218,7 @@ def test_another_data_folder_asks_for_its_region_s_grids_again(host, tmp_path, m
 
 
 def test_the_grid_comes_from_osxp_s_own_region_of_the_square(host) -> None:
-    """Cairo is in OrthoStudio XP's Africa, where AutoOrtho's map put it in Europe."""
+    """Cairo's grid comes from OrthoStudio XP's own region of the square, Africa."""
     asked, zips = host
     zips["afr"] = _night_zip({"+30+031.png": b"\x89PNG cairo"})
     assert night.grid_of(TileRef(30, 31)).read_bytes() == b"\x89PNG cairo"

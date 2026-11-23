@@ -299,7 +299,7 @@ def folder_key(text: str) -> str:
 def _same_folder(a: str, b: str) -> bool:
     """Whether two folders of that list are one: written the same (:func:`folder_key`), or, both
     there, the same folder on the disk (``filesystem.folder_identity``: one a link to the other,
-    or written in another case on macOS, whose disks ignore it)."""
+    or written in another case)."""
     if folder_key(a) == folder_key(b):
         return True
     one = folder_identity(folder_path(a))
@@ -340,7 +340,7 @@ def _one_space(table: dict) -> dict:
 
 def _one_list(table: dict) -> dict:
     """A file from before several folders of other tools' meshes, or whose list is not one: its one
-    folder (``other_mesh``) the list's only line, so that nobody loses his."""
+    folder (``other_mesh``) the list's only line, so that it is kept."""
     old = table.get("other_mesh")
     if isinstance(table.get("other_meshes"), list) or not isinstance(old, str) or not old.strip():
         return table
@@ -381,10 +381,8 @@ def load_settings() -> LiveSettings:
 
 def _write(data: dict, settings: LiveSettings) -> None:
     """``settings`` written into ``live.toml`` as ``data`` holds it, the rest of the file as it was.
-    With them ``other_mesh``, the one folder of other tools' meshes of 2.4 and before, the list's
-    first (none: empty), so that an older Live keeps that folder: it reads ``other_mesh`` alone and
-    writes its own settings back without the list at its first save, which wiped both lists; the
-    first folder then comes back here as a list of one (:func:`_one_list`)."""
+    With them ``other_mesh``, the list's first folder (none: empty), the one folder a Live of 2.4
+    and before reads; a file it wrote comes back here as a list of one (:func:`_one_list`)."""
     first = settings.other_meshes[0] if settings.other_meshes else ""
     data[TABLE] = {**settings.model_dump(), "other_mesh": first}
     path = settings_file()

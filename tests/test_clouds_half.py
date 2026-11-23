@@ -1,7 +1,7 @@
 # OrthoStudio XP, Copyright (C) 2026 radioharris. Free software under the GNU GPL: see LICENSE.
 # Additional terms (GPL v3 section 7) apply to radioharris's material in this file: see NOTICE.
 """Half of the processor for the clouds (``expert.clouds_half_processor``): OpenCV's threads and
-the textures Apply makes at once, read once; never on a Mac, whose OpenCV takes no limit."""
+the textures Apply makes at once, read once; never on a Mac."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def test_the_choice_is_read_once_and_halves_what_apply_makes_at_once(
 def test_a_mac_never_halves_even_when_its_settings_say_so(
     home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A settings file brought from another computer: the Mac's OpenCV would ignore the limit."""
+    """A settings file brought from another computer changes nothing on a Mac."""
     monkeypatch.setattr(opencv, "HALVES", False)
     _choose(home, True)
     assert opencv.half_processor() is False and laying.at_once() == laying.LAYING_AT_ONCE

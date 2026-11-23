@@ -583,8 +583,7 @@ its box says so; a folder whose squares a folder higher in the list has all says
 its two buttons greyed out. A change
 applies at Live's next start, with X-Plane closed (a start while X-Plane runs is refused, saying
 so), and so does a square's mesh saved again, its relief fixed once more. A square no folder has
-is simply not taken. Where two meshes meet, a texture on the line between them gets the files of both,
-so that X-Plane finds every file each side names. If one of those folders is also enabled in
+is simply not taken. If one of those folders is also enabled in
 X-Plane's own scenery list above Live, X-Plane draws it there itself, without photos: Live's checks
 say so, and name it; disable it in X-Plane's scenery list.
 
